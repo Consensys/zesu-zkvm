@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Lint, Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out all three repos as siblings so the path dependencies resolve:
+      #   $GITHUB_WORKSPACE/zesu-zkvm  ← this repo
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@v4
+        with:
+          path: zesu-zkvm
+
+      - name: Checkout zesu
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/zesu
+          path: zesu
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.15.2"
+
+      - name: Lint
+        working-directory: zesu-zkvm
+        run: zig fmt --check src/ build.zig
+
+      - name: Build (Debug)
+        working-directory: zesu-zkvm
+        run: zig build
+
+      - name: Build (ReleaseFast)
+        working-directory: zesu-zkvm
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Test
+        working-directory: zesu-zkvm
+        run: zig build test --summary all

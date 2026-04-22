@@ -1,0 +1,109 @@
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    // ── Zisk zkVM target: RISC-V 64-bit freestanding (rv64im baseline) ────────
+    const target = b.resolveTargetQuery(.{
+        .cpu_arch = .riscv64,
+        .cpu_model = .{ .explicit = &std.Target.riscv.cpu.baseline_rv64 },
+        .cpu_features_add = std.Target.riscv.featureSet(&.{.m}),
+        .cpu_features_sub = std.Target.riscv.featureSet(&.{ .a, .c, .d, .f, .zicsr, .zaamo, .zalrsc }),
+        .os_tag = .freestanding,
+        .abi = .none,
+    });
+    const optimize = b.standardOptimizeOption(.{});
+
+    // ── zesu-core: pure module definitions, no C libraries ────────────────────
+    // No crypto flags needed — accelerators.zig uses extern fn zkvm_* declarations
+    // resolved at link time from the ZisK accel object compiled below.
+    const zesu_core_dep = b.dependency("zesu_core", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // ── Zisk zkVM runtime module ──────────────────────────────────────────────
+    // Provides: ZiskAllocator (bump allocator), CSR circuit bindings
+    // (keccak, sha256, secp256k1, BN254, BLS12-381, arith256, ...)
+    const zisk_mod = b.addModule("zisk", .{
+        .root_source_file = b.path("src/zisk/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // ── Override zesu_allocator: Zisk bump allocator ──────────────────────────
+    // Replaces zesu-core's default std.heap.c_allocator (unavailable in freestanding).
+    // Every EVM module that heap-allocates has this injected.
+    const zisk_alloc_mod = b.addModule("zesu_allocator", .{
+        .root_source_file = b.path("src/zisk/zesu_allocator.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    zisk_alloc_mod.addImport("zisk", zisk_mod);
+
+    for ([_]*std.Build.Module{
+        zesu_core_dep.module("bytecode"),
+        zesu_core_dep.module("state"),
+        zesu_core_dep.module("context"),
+        zesu_core_dep.module("interpreter"),
+        zesu_core_dep.module("precompile"),
+        zesu_core_dep.module("handler"),
+    }) |evm_mod| {
+        evm_mod.addImport("zesu_allocator", zisk_alloc_mod);
+    }
+
+    // zesu_allocator: override for executor internals (system_calls, transition) in freestanding.
+    zesu_core_dep.module("executor").addImport("zesu_allocator", zisk_alloc_mod);
+
+    // ── ZisK accel object: exports zkvm_* symbols via CSR circuit bindings ───
+    // Compiled as a separate object and linked into the exe so the linker
+    // resolves the extern fn zkvm_* declarations in accelerators.zig.
+    // keccak256 and sha256 via Keccak/SHA CSRs; ecrecover via secp256k1 CSRs;
+    // BN254 add/mul/pairing via BN254 curve CSRs; BLS12-381 stubs (TODO).
+    const zisk_accel_obj = b.addObject(.{
+        .name = "zisk_accel",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/zisk/accel_impl.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    zisk_accel_obj.root_module.code_model = .medium;
+    zisk_accel_obj.root_module.addImport("zisk", zisk_mod);
+
+    // ── Guest executable ──────────────────────────────────────────────────────
+    // src/main.zig: _start asm entry, UART output, zkExit, panic handler,
+    // main() — reads input, deserializes, executes, writes ProofOutput.
+    // src/zkvm_io.zig and src/deserialize.zig are relative imports from main.
+    const exe = b.addExecutable(.{
+        .name = "zesu-zisk",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    exe.setLinkerScript(b.path("zisk.ld"));
+    exe.root_module.code_model = .medium;
+
+    exe.addObject(zisk_accel_obj);
+    exe.root_module.addImport("zisk", zisk_mod);
+    exe.root_module.addImport("executor", zesu_core_dep.module("executor"));
+    // deserialize.zig imports these as named modules (relative import from main.zig)
+    exe.root_module.addImport("input", zesu_core_dep.module("input"));
+    exe.root_module.addImport("primitives", zesu_core_dep.module("primitives"));
+    exe.root_module.addImport("mpt", zesu_core_dep.module("mpt"));
+    exe.root_module.addImport("rlp_decode", zesu_core_dep.module("rlp_decode"));
+
+    b.installArtifact(exe);
+
+    // Run via ziskemu emulator
+    const run_step = b.step("run", "Run via Zisk emulator (ziskemu must be in PATH)");
+    const run_cmd = b.addSystemCommand(&.{ "ziskemu", "-e" });
+    run_cmd.addArtifactArg(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_cmd.addArgs(args);
+    run_step.dependOn(&run_cmd.step);
+
+    // Placeholder test step
+    _ = b.step("test", "Run unit tests");
+}
