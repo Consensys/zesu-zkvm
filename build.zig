@@ -85,7 +85,7 @@ pub fn build(b: *std.Build) void {
     exe.setLinkerScript(b.path("zisk.ld"));
     exe.root_module.code_model = .medium;
 
-    exe.addObject(zisk_accel_obj);
+    exe.root_module.addObject(zisk_accel_obj);
     exe.root_module.addImport("zisk", zisk_mod);
     exe.root_module.addImport("executor", zesu_core_dep.module("executor"));
     // deserialize.zig imports these as named modules (relative import from main.zig)

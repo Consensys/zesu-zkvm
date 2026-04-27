@@ -80,7 +80,7 @@ pub fn fromBytes(allocator: std.mem.Allocator, data: []const u8) !input_mod.Stat
     return input_mod.StatelessInput{
         .new_payload_request = .{
             .execution_payload = input_mod.payloadFromBlock(header, transactions, withdrawals),
-            .parent_beacon_block_root = @splat(0),
+            .parent_beacon_block_root = header.parent_beacon_block_root orelse @splat(0),
         },
         .witness = .{
             .nodes = nodes,
