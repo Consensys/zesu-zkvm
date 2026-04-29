@@ -36,7 +36,9 @@ const Bls12PairingPair = extern struct { g1: [96]u8, g2: [192]u8 };
 const KECCAK_RATE = 136; // 1088-bit rate for Keccak-256
 
 export fn zkvm_keccak256(data: [*]const u8, len: usize, output: *[32]u8) i32 {
-    var state: [200]u8 = .{0} ** 200;
+    // Zero the state in u64 words (8× fewer stores than byte-by-byte memset).
+    var state: [200]u8 align(8) = undefined;
+    for (@as(*[25]u64, @ptrCast(&state))) |*w| w.* = 0;
     var offset: usize = 0;
     const d = data[0..len];
 
