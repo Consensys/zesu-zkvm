@@ -20,16 +20,15 @@
 ///   kzg_point_eval — stub (ZKVM_EFAIL)
 ///   BLS12-381 ops  — stub (ZKVM_EFAIL; CSRs exist, protocol TODO)
 ///   secp256r1_verify — stub (ZKVM_EFAIL)
-
-const std  = @import("std");
+const std = @import("std");
 const zisk = @import("zisk");
 const secp256k1_impl = @import("./secp256k1.zig");
-const eip196         = @import("./eip196.zig");
+const eip196 = @import("./eip196.zig");
 
 // Local pair types — binary-compatible with accelerators.zig and zkvm_accelerators.h.
 const Bn254PairingPair = extern struct { g1: [64]u8, g2: [128]u8 };
-const Bls12G1MsmPair   = extern struct { point: [96]u8,  scalar: [32]u8 };
-const Bls12G2MsmPair   = extern struct { point: [192]u8, scalar: [32]u8 };
+const Bls12G1MsmPair = extern struct { point: [96]u8, scalar: [32]u8 };
+const Bls12G2MsmPair = extern struct { point: [192]u8, scalar: [32]u8 };
 const Bls12PairingPair = extern struct { g1: [96]u8, g2: [192]u8 };
 
 // ── Keccak-256 sponge ─────────────────────────────────────────────────────────
@@ -48,8 +47,8 @@ export fn zkvm_keccak256(data: [*]const u8, len: usize, output: *[32]u8) i32 {
 
     const remaining = d.len - offset;
     for (0..remaining) |i| state[i] ^= d[offset + i];
-    state[remaining] ^= 0x01;         // Keccak domain separator
-    state[KECCAK_RATE - 1] ^= 0x80;   // end-of-rate marker
+    state[remaining] ^= 0x01; // Keccak domain separator
+    state[KECCAK_RATE - 1] ^= 0x80; // end-of-rate marker
     zisk.keccakf(&state);
 
     output.* = state[0..32].*;
@@ -117,9 +116,9 @@ export fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32 {
 // ── ECRECOVER ─────────────────────────────────────────────────────────────────
 
 export fn zkvm_secp256k1_ecrecover(
-    msg:    *const [32]u8,
-    sig:    *const [64]u8,
-    recid:  u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    recid: u8,
     output: *[64]u8,
 ) i32 {
     return if (secp256k1_impl.recoverPubkey(msg, sig, recid, output)) 0 else -1;
@@ -130,9 +129,9 @@ export fn zkvm_secp256k1_ecrecover(
 // Not required for stateless block execution (only ecrecover is needed).
 
 export fn zkvm_secp256k1_verify(
-    msg:      *const [32]u8,
-    sig:      *const [64]u8,
-    pubkey:   *const [64]u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    pubkey: *const [64]u8,
     verified: *bool,
 ) i32 {
     _ = msg;
@@ -156,13 +155,18 @@ export fn zkvm_ripemd160(data: [*]const u8, len: usize, output: *[32]u8) i32 {
 // arith256Mod covers 256-bit ops but modexp inputs can be any size.
 
 export fn zkvm_modexp(
-    base:    [*]const u8, base_len: usize,
-    exp:     [*]const u8, exp_len:  usize,
-    modulus: [*]const u8, mod_len:  usize,
-    output:  [*]u8,
+    base: [*]const u8,
+    base_len: usize,
+    exp: [*]const u8,
+    exp_len: usize,
+    modulus: [*]const u8,
+    mod_len: usize,
+    output: [*]u8,
 ) i32 {
-    _ = base; _ = base_len;
-    _ = exp;  _ = exp_len;
+    _ = base;
+    _ = base_len;
+    _ = exp;
+    _ = exp_len;
     _ = modulus;
     @memset(output[0..mod_len], 0);
     return -1;
@@ -194,12 +198,16 @@ export fn zkvm_bn254_pairing(pairs: [*]const Bn254PairingPair, num_pairs: usize,
 
 export fn zkvm_blake2f(
     rounds: u32,
-    h:      *[64]u8,
-    m:      *const [128]u8,
-    t:      *const [16]u8,
-    f:      u8,
+    h: *[64]u8,
+    m: *const [128]u8,
+    t: *const [16]u8,
+    f: u8,
 ) i32 {
-    _ = rounds; _ = h; _ = m; _ = t; _ = f;
+    _ = rounds;
+    _ = h;
+    _ = m;
+    _ = t;
+    _ = f;
     return -1;
 }
 
@@ -207,12 +215,15 @@ export fn zkvm_blake2f(
 
 export fn zkvm_kzg_point_eval(
     commitment: *const [48]u8,
-    z:          *const [32]u8,
-    y:          *const [32]u8,
-    proof:      *const [48]u8,
-    verified:   *bool,
+    z: *const [32]u8,
+    y: *const [32]u8,
+    proof: *const [48]u8,
+    verified: *bool,
 ) i32 {
-    _ = commitment; _ = z; _ = y; _ = proof;
+    _ = commitment;
+    _ = z;
+    _ = y;
+    _ = proof;
     verified.* = false;
     return -1;
 }
@@ -223,50 +234,63 @@ export fn zkvm_kzg_point_eval(
 // substantial software on top of those primitives.
 
 export fn zkvm_bls12_g1_add(p1: *const [96]u8, p2: *const [96]u8, result: *[96]u8) i32 {
-    _ = p1; _ = p2; _ = result;
+    _ = p1;
+    _ = p2;
+    _ = result;
     return -1;
 }
 
 export fn zkvm_bls12_g1_msm(pairs: [*]const Bls12G1MsmPair, num_pairs: usize, result: *[96]u8) i32 {
-    _ = pairs; _ = num_pairs; _ = result;
+    _ = pairs;
+    _ = num_pairs;
+    _ = result;
     return -1;
 }
 
 export fn zkvm_bls12_g2_add(p1: *const [192]u8, p2: *const [192]u8, result: *[192]u8) i32 {
-    _ = p1; _ = p2; _ = result;
+    _ = p1;
+    _ = p2;
+    _ = result;
     return -1;
 }
 
 export fn zkvm_bls12_g2_msm(pairs: [*]const Bls12G2MsmPair, num_pairs: usize, result: *[192]u8) i32 {
-    _ = pairs; _ = num_pairs; _ = result;
+    _ = pairs;
+    _ = num_pairs;
+    _ = result;
     return -1;
 }
 
 export fn zkvm_bls12_pairing(pairs: [*]const Bls12PairingPair, num_pairs: usize, verified: *bool) i32 {
-    _ = pairs; _ = num_pairs;
+    _ = pairs;
+    _ = num_pairs;
     verified.* = false;
     return -1;
 }
 
 export fn zkvm_bls12_map_fp_to_g1(field_element: *const [48]u8, result: *[96]u8) i32 {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return -1;
 }
 
 export fn zkvm_bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u8) i32 {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return -1;
 }
 
 // ── secp256r1 verify — stub ───────────────────────────────────────────────────
 
 export fn zkvm_secp256r1_verify(
-    msg:      *const [32]u8,
-    sig:      *const [64]u8,
-    pubkey:   *const [64]u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    pubkey: *const [64]u8,
     verified: *bool,
 ) i32 {
-    _ = msg; _ = sig; _ = pubkey;
+    _ = msg;
+    _ = sig;
+    _ = pubkey;
     verified.* = false;
     return -1;
 }

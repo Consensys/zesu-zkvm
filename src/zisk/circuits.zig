@@ -23,7 +23,6 @@
 ///   0x80F  bls12_381_fsub  — BLS12-381 Fp2 subtraction
 ///   0x810  bls12_381_fmul  — BLS12-381 Fp2 multiplication
 ///   0x811  add256          — 256-bit addition
-
 pub const CircuitCSR = enum(u16) {
     keccakf = 0x800,
     arith256 = 0x801,
