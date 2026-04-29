@@ -77,6 +77,14 @@ pub fn fromBytes(allocator: std.mem.Allocator, data: []const u8) !input_mod.Stat
     _ = try readSliceArray(allocator, data, &pos); // keys — not in ExecutionWitness
     const headers = try readSliceArray(allocator, data, &pos);
 
+    // ── Optional public_keys section ──────────────────────────────────────────
+    // When present (format extension), each entry is a 64-byte uncompressed secp256k1
+    // public key (no 0x04 prefix). Sender = keccak256(pubkey)[12:] — avoids ECRECOVER.
+    const public_keys: []const []const u8 = if (pos < data.len)
+        try readSliceArray(allocator, data, &pos)
+    else
+        &.{};
+
     return input_mod.StatelessInput{
         .new_payload_request = .{
             .execution_payload = input_mod.payloadFromBlock(header, transactions, withdrawals),
@@ -87,6 +95,7 @@ pub fn fromBytes(allocator: std.mem.Allocator, data: []const u8) !input_mod.Stat
             .codes = codes,
             .headers = headers,
         },
+        .public_keys = public_keys,
     };
 }
 
