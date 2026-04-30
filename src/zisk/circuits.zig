@@ -61,8 +61,8 @@ pub fn keccakf(state: *[200]u8) void {
 /// Both block (64 bytes) and state (32 bytes) must be 8-byte aligned.
 pub fn sha256Compress(block_and_state: *[96]u8) void {
     var params: [2]u64 align(8) = undefined;
-    params[0] = @intFromPtr(block_and_state);        // 64-byte message block
-    params[1] = @intFromPtr(block_and_state) + 64;   // 32-byte state
+    params[0] = @intFromPtr(block_and_state); // 64-byte message block
+    params[1] = @intFromPtr(block_and_state) + 64; // 32-byte state
     asm volatile ("csrs 0x805, %[ptr]"
         :
         : [ptr] "r" (@intFromPtr(&params)),
