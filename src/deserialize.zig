@@ -80,7 +80,8 @@ pub fn fromBytes(allocator: std.mem.Allocator, data: []const u8) !input_mod.Stat
     // ── Optional public_keys section ──────────────────────────────────────────
     // When present (format extension), each entry is a 64-byte uncompressed secp256k1
     // public key (no 0x04 prefix). Sender = keccak256(pubkey)[12:] — avoids ECRECOVER.
-    const public_keys: []const []const u8 = if (pos < data.len)
+    // Guard requires ≥8 bytes so alignment-padding bytes (up to 7) don't trigger a read.
+    const public_keys: []const []const u8 = if (pos + 8 <= data.len)
         try readSliceArray(allocator, data, &pos)
     else
         &.{};
