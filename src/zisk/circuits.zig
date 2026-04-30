@@ -84,6 +84,19 @@ pub fn secp256k1Add(points: *[128]u8) void {
         : .{ .memory = true });
 }
 
+/// Secp256k1 point addition with separate point pointers — result written to p1.
+/// Eliminates the 128-byte concat buffer: passes p1/p2 directly to the CSR.
+/// Both pointers must be 8-byte aligned. p1 receives the result.
+pub fn secp256k1AddDirect(p1: *[64]u8, p2: *const [64]u8) void {
+    const p1_ptr: *Point256 = @ptrCast(@alignCast(p1));
+    const p2_ptr: *Point256 = @ptrCast(@alignCast(@constCast(p2)));
+    var params = Bn254CurveAddParams{ .p1 = p1_ptr, .p2 = p2_ptr };
+    asm volatile ("csrs 0x803, %[ptr]"
+        :
+        : [ptr] "r" (@intFromPtr(&params)),
+        : .{ .memory = true });
+}
+
 /// Secp256k1 point doubling — 64-byte point, in-place
 pub fn secp256k1Double(point: *[64]u8) void {
     const ptr = @intFromPtr(point);
@@ -247,6 +260,29 @@ pub fn arith256Mod(input: *[128]u8) void {
         : [ptr] "r" (@intFromPtr(&ptrs)),
         : .{ .memory = true });
     @memcpy(input[0..32], &out);
+}
+
+/// Direct 256-bit modular multiply-add: out = (a*b + c) mod m.
+/// Passes all five operand pointers directly — no intermediate 128-byte buffer.
+/// Callers must ensure all pointers are 8-byte aligned. a/b/c/m must not alias out.
+pub fn arith256ModDirect(
+    a: *const [32]u8,
+    b: *const [32]u8,
+    c: *const [32]u8,
+    m: *const [32]u8,
+    out: *[32]u8,
+) void {
+    var ptrs: [5]u64 align(8) = .{
+        @intFromPtr(a),
+        @intFromPtr(b),
+        @intFromPtr(c),
+        @intFromPtr(m),
+        @intFromPtr(out),
+    };
+    asm volatile ("csrs 0x802, %[ptr]"
+        :
+        : [ptr] "r" (@intFromPtr(&ptrs)),
+        : .{ .memory = true });
 }
 
 /// 384-bit modular operations — 192 bytes, result in first 48

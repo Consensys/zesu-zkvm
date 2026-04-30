@@ -1,13 +1,13 @@
 //! secp256k1 ecrecover for the Zisk zkVM target.
 //!
 //! Uses Zisk CSR hardware circuits:
-//!   - arith256Mod (0x802): (a*b + c) mod m  — 128-byte buffer, result in first 32
-//!   - secp256k1Add (0x803): point addition   — 128-byte buffer, result in first 64
-//!   - secp256k1Double (0x804): point double  — 64-byte buffer, in-place
+//!   - arith256ModDirect (0x802): out = (a*b + c) mod m — zero-copy, 5 direct pointers
+//!   - secp256k1AddDirect (0x803): p1 += p2 in-place — zero-copy, 2 direct pointers
+//!   - secp256k1Double (0x804): point double in-place — 64 bytes
 //!
-//! Point format (CSR): 64 bytes = x(32 LE bytes) || y(32 LE bytes).
-//! Each coordinate is a 256-bit integer in little-endian byte order.
+//! Point format (CSR): 64 bytes = x(32 LE bytes) || y(32 LE bytes), align(8).
 //! Field/scalar elements (Fe) use the same LE 32-byte representation.
+//! All-zero 64-byte buffer represents the point at infinity.
 //!
 //! Public interface:
 //!   recoverPubkey — recover the 64-byte uncompressed secp256k1 public key
@@ -18,9 +18,10 @@ const std = @import("std");
 const zisk = @import("zisk");
 
 // ── secp256k1 constants (little-endian 256-bit integers) ──────────────────────
+// align(8) on constants ensures word-aligned CSR inputs without runtime cost.
 
 /// Field prime p = 2²⁵⁶ − 2³² − 977
-const P_LE: Fe = .{
+const P_LE: Fe align(8) = .{
     0x2f, 0xfc, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -28,7 +29,7 @@ const P_LE: Fe = .{
 };
 
 /// Curve order n
-const N_LE: Fe = .{
+const N_LE: Fe align(8) = .{
     0x41, 0x41, 0x36, 0xd0, 0x8c, 0x5e, 0xd2, 0xbf,
     0x3b, 0xa0, 0x48, 0xaf, 0xe6, 0xdc, 0xae, 0xba,
     0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -36,7 +37,7 @@ const N_LE: Fe = .{
 };
 
 /// Generator x-coordinate
-const GX_LE: Fe = .{
+const GX_LE: Fe align(8) = .{
     0x98, 0x17, 0xf8, 0x16, 0x5b, 0x81, 0xf2, 0x59,
     0xd9, 0x28, 0xce, 0x2d, 0xdb, 0xfc, 0x9b, 0x02,
     0x07, 0x0b, 0x87, 0xce, 0x95, 0x62, 0xa0, 0x55,
@@ -44,7 +45,7 @@ const GX_LE: Fe = .{
 };
 
 /// Generator y-coordinate
-const GY_LE: Fe = .{
+const GY_LE: Fe align(8) = .{
     0xb8, 0xd4, 0x10, 0xfb, 0x8f, 0xd0, 0x47, 0x9c,
     0x19, 0x54, 0x85, 0xa6, 0x48, 0xb4, 0x17, 0xfd,
     0xa8, 0x08, 0x11, 0x0e, 0xfc, 0xfb, 0xa4, 0x5d,
@@ -76,52 +77,33 @@ const P_SQRT_EXP_BE: [32]u8 = .{
     0xff, 0xff, 0xff, 0xff, 0xbf, 0xff, 0xff, 0x0c,
 };
 
-const ZERO: Fe = .{0} ** 32;
-const ONE: Fe = .{1} ++ (.{0} ** 31);
+const ZERO: Fe align(8) = .{0} ** 32;
+const ONE: Fe align(8) = .{1} ++ (.{0} ** 31);
+const SEVEN: Fe align(8) = .{7} ++ (.{0} ** 31);
+
+/// Generator point as a flat 64-byte aligned buffer — avoids copying in doRecover.
+const G_BUF: [64]u8 align(8) = GX_LE ++ GY_LE;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 /// 256-bit field element / scalar in little-endian byte order (byte 0 = LSB).
 const Fe = [32]u8;
 
-/// A secp256k1 affine point.
-const Point = struct { x: Fe, y: Fe };
-
 // ── Byte-order conversion ──────────────────────────────────────────────────────
 
 fn beToLe(be: *const [32]u8) Fe {
-    var le: Fe = undefined;
+    var le: Fe align(8) = undefined;
     for (0..32) |i| le[i] = be[31 - i];
     return le;
 }
 
-fn leToBe(le: *const Fe) [32]u8 {
+fn leToBe(le: *const [32]u8) [32]u8 {
     var be: [32]u8 = undefined;
     for (0..32) |i| be[i] = le[31 - i];
     return be;
 }
 
-// ── Field arithmetic (via arith256Mod CSR) ─────────────────────────────────────
-
-fn modMulAdd(a: *const Fe, b: *const Fe, c: *const Fe, m: *const Fe) Fe {
-    var buf: [128]u8 align(8) = undefined;
-    @memcpy(buf[0..32], a);
-    @memcpy(buf[32..64], b);
-    @memcpy(buf[64..96], c);
-    @memcpy(buf[96..128], m);
-    zisk.arith256Mod(&buf);
-    var result: Fe = undefined;
-    @memcpy(&result, buf[0..32]);
-    return result;
-}
-
-fn feMul(a: *const Fe, b: *const Fe, m: *const Fe) Fe {
-    return modMulAdd(a, b, &ZERO, m);
-}
-
-fn feAdd(a: *const Fe, b: *const Fe, m: *const Fe) Fe {
-    return modMulAdd(a, &ONE, b, m);
-}
+// ── Field element helpers ──────────────────────────────────────────────────────
 
 fn feIsZero(a: *const Fe) bool {
     return std.mem.eql(u8, a, &ZERO);
@@ -138,155 +120,170 @@ fn feNumericLessThan(a: *const Fe, b: *const Fe) bool {
     return false;
 }
 
-fn feNeg(a: *const Fe, m: *const Fe) Fe {
-    if (feIsZero(a)) return ZERO;
-    var result: Fe = m.*;
+/// In-place negation: a = m - a. No-op if a is zero.
+fn feNegInPlace(a: *Fe, m: *const Fe) void {
+    if (feIsZero(a)) return;
     var borrow: u8 = 0;
     for (0..32) |i| {
-        const diff: i16 = @as(i16, result[i]) - @as(i16, a[i]) - @as(i16, @intCast(borrow));
+        const ai = a[i];
+        const diff: i16 = @as(i16, m[i]) - @as(i16, ai) - @as(i16, @intCast(borrow));
         if (diff < 0) {
-            result[i] = @intCast(diff + 256);
+            a[i] = @intCast(diff + 256);
             borrow = 1;
         } else {
-            result[i] = @intCast(diff);
+            a[i] = @intCast(diff);
             borrow = 0;
         }
     }
-    return result;
 }
 
-fn fePow(base: *const Fe, exp_be: [32]u8, m: *const Fe) Fe {
-    var result = ONE;
+/// out = base^exp mod m, using ping-pong buffers to eliminate per-iteration copies.
+/// exp is big-endian (MSB first). Callers must declare out/base as align(8).
+fn fePow(out: *Fe, base: *const Fe, exp_be: [32]u8, m: *const Fe) void {
+    var bufs: [2]Fe align(8) = .{ ONE, undefined };
+    var cur: u1 = 0;
     for (0..256) |i| {
+        const nxt: u1 = cur ^ 1;
+        zisk.arith256ModDirect(&bufs[cur], &bufs[cur], &ZERO, m, &bufs[nxt]);
+        cur = nxt;
         const byte_idx = i / 8;
         const bit_idx: u3 = @intCast(7 - (i % 8));
-        result = feMul(&result, &result, m);
         if ((exp_be[byte_idx] >> bit_idx) & 1 == 1) {
-            result = feMul(&result, base, m);
+            const nxt2: u1 = cur ^ 1;
+            zisk.arith256ModDirect(&bufs[cur], base, &ZERO, m, &bufs[nxt2]);
+            cur = nxt2;
         }
     }
-    return result;
+    out.* = bufs[cur];
 }
 
-fn feInvN(a: *const Fe) Fe {
-    return fePow(a, N_MINUS_2_BE, &N_LE);
-}
+// ── Point operations ───────────────────────────────────────────────────────────
+// Points are 64-byte aligned buffers: x(32 LE bytes) || y(32 LE bytes).
+// All-zero = point at infinity.
 
-fn feSqrtP(a: *const Fe) Fe {
-    return fePow(a, P_SQRT_EXP_BE, &P_LE);
-}
-
-// ── Point operations (via secp256k1Add / secp256k1Double CSRs) ─────────────────
-
-fn pointIsInfinity(buf: *const [64]u8) bool {
-    for (buf) |b| if (b != 0) return false;
+fn isInfinity(p: *const [64]u8) bool {
+    const words: *const [8]u64 = @ptrCast(@alignCast(p));
+    for (words) |w| if (w != 0) return false;
     return true;
 }
 
-fn pointToBytes(p: *const Point) [64]u8 {
-    var buf: [64]u8 align(8) = undefined;
-    @memcpy(buf[0..32], &p.x);
-    @memcpy(buf[32..64], &p.y);
-    return buf;
-}
-
-fn bytesToPoint(buf: *const [64]u8) Point {
-    return .{ .x = buf[0..32].*, .y = buf[32..64].* };
-}
-
-fn optAdd(a: ?Point, b: ?Point) ?Point {
-    const pa = a orelse return b;
-    const pb = b orelse return a;
-    return pointAdd(pa, pb);
-}
-
-fn pointAdd(p1: Point, p2: Point) ?Point {
-    const b1 = pointToBytes(&p1);
-    const b2 = pointToBytes(&p2);
-    if (pointIsInfinity(&b1)) return p2;
-    if (pointIsInfinity(&b2)) return p1;
-    if (std.mem.eql(u8, b1[0..32], b2[0..32])) {
-        if (std.mem.eql(u8, b1[32..64], b2[32..64])) return pointDouble(p1);
-        return null;
+/// In-place point addition: a += b.
+/// Handles identity, doubling, and negation-to-infinity cases.
+fn pointAddInPlace(a: *[64]u8, b: *const [64]u8) void {
+    if (isInfinity(a)) {
+        @memcpy(a, b);
+        return;
     }
-    var buf: [128]u8 align(8) = undefined;
-    @memcpy(buf[0..64], b1[0..]);
-    @memcpy(buf[64..128], b2[0..]);
-    zisk.secp256k1Add(&buf);
-    return bytesToPoint(buf[0..64]);
+    if (isInfinity(b)) return;
+    if (std.mem.eql(u8, a[0..32], b[0..32])) {
+        if (std.mem.eql(u8, a[32..64], b[32..64])) {
+            zisk.secp256k1Double(a); // P + P = 2P
+        } else {
+            @memset(a, 0); // P + (-P) = infinity
+        }
+        return;
+    }
+    zisk.secp256k1AddDirect(a, b);
 }
 
-fn pointDouble(p: Point) ?Point {
-    var buf: [64]u8 align(8) = pointToBytes(&p);
-    if (pointIsInfinity(&buf)) return null;
-    zisk.secp256k1Double(&buf);
-    return bytesToPoint(&buf);
-}
-
-fn scalarMul(k: *const Fe, p: Point) ?Point {
-    if (feIsZero(k)) return null;
-    var result: ?Point = null;
-    var cur: ?Point = p;
+/// Scalar multiplication: result = k * p, accumulated LSB-first.
+/// result/p must be 8-byte aligned (declared align(8) by caller).
+fn scalarMul(result: *[64]u8, k: *const Fe, p: *const [64]u8) void {
+    @memset(result, 0);
+    if (feIsZero(k)) return;
+    var cur: [64]u8 align(8) = p.*;
     for (0..256) |i| {
         const byte_idx = i / 8;
         const bit_idx: u3 = @intCast(i % 8);
         if ((k[byte_idx] >> bit_idx) & 1 == 1) {
-            result = optAdd(result, cur);
+            pointAddInPlace(result, &cur);
         }
-        cur = if (cur) |c| pointDouble(c) else null;
+        if (!isInfinity(&cur)) {
+            zisk.secp256k1Double(&cur);
+        }
     }
-    return result;
 }
 
 // ── ecrecover ──────────────────────────────────────────────────────────────────
 
-/// Recover the 64-byte uncompressed secp256k1 public key (big-endian x||y)
-/// from a recoverable signature.  Returns null on failure.
 fn doRecover(msg_hash: [32]u8, sig: [64]u8, recid: u8) ?[64]u8 {
     if (recid > 3) return null;
 
-    const r_le = beToLe(sig[0..32]);
-    const s_le = beToLe(sig[32..64]);
-    const z_le = feMul(&beToLe(&msg_hash), &ONE, &N_LE);
+    var r_le: Fe align(8) = beToLe(sig[0..32]);
+    var s_le: Fe align(8) = beToLe(sig[32..64]);
+
+    // z = beToLe(msg_hash) mod N
+    var z_le: Fe align(8) = undefined;
+    const mh_le: Fe align(8) = beToLe(&msg_hash);
+    zisk.arith256ModDirect(&mh_le, &ONE, &ZERO, &N_LE, &z_le);
 
     if (feIsZero(&r_le) or feIsZero(&s_le)) return null;
 
-    var rx: Fe = r_le;
+    // rx: x-coordinate of R (r or r+N for recid bit 1)
+    var rx: Fe align(8) = r_le;
     if (recid & 2 != 0) {
-        rx = feAdd(&r_le, &N_LE, &P_LE);
+        zisk.arith256ModDirect(&r_le, &ONE, &N_LE, &P_LE, &rx);
+        // If rx < r_le, addition overflowed P — x-coordinate is unreachable.
         if (feNumericLessThan(&rx, &r_le)) return null;
     }
 
-    const x2 = feMul(&rx, &rx, &P_LE);
-    const x3 = feMul(&x2, &rx, &P_LE);
-    const seven: Fe = .{7} ++ (.{0} ** 31);
-    const y2 = feAdd(&x3, &seven, &P_LE);
-    var y = feSqrtP(&y2);
+    // Candidate y: y = sqrt(rx^3 + 7) mod P
+    var x2: Fe align(8) = undefined;
+    var x3: Fe align(8) = undefined;
+    var y2: Fe align(8) = undefined;
+    var y: Fe align(8) = undefined;
+    zisk.arith256ModDirect(&rx, &rx, &ZERO, &P_LE, &x2);
+    zisk.arith256ModDirect(&x2, &rx, &ZERO, &P_LE, &x3);
+    zisk.arith256ModDirect(&x3, &ONE, &SEVEN, &P_LE, &y2);
+    fePow(&y, &y2, P_SQRT_EXP_BE, &P_LE);
 
-    if (!std.mem.eql(u8, &feMul(&y, &y, &P_LE), &y2)) return null;
+    // Verify y^2 == y2
+    var y_sq: Fe align(8) = undefined;
+    zisk.arith256ModDirect(&y, &y, &ZERO, &P_LE, &y_sq);
+    if (!std.mem.eql(u8, &y_sq, &y2)) return null;
 
-    if ((y[0] & 1) != (recid & 1)) y = feNeg(&y, &P_LE);
+    // Choose correct y parity
+    if ((y[0] & 1) != (recid & 1)) feNegInPlace(&y, &P_LE);
 
-    const R = Point{ .x = rx, .y = y };
-    const G = Point{ .x = GX_LE, .y = GY_LE };
+    // Build R point buffer
+    var R_buf: [64]u8 align(8) = undefined;
+    @memcpy(R_buf[0..32], &rx);
+    @memcpy(R_buf[32..64], &y);
 
-    const r_inv = feInvN(&r_le);
-    const k1 = feMul(&feNeg(&z_le, &N_LE), &r_inv, &N_LE);
-    const k2 = feMul(&s_le, &r_inv, &N_LE);
+    // r_inv = r^(N-2) mod N
+    var r_inv: Fe align(8) = undefined;
+    fePow(&r_inv, &r_le, N_MINUS_2_BE, &N_LE);
 
-    const Q = optAdd(scalarMul(&k1, G), scalarMul(&k2, R)) orelse return null;
+    // k1 = (-z * r_inv) mod N,  k2 = (s * r_inv) mod N
+    var neg_z: Fe align(8) = z_le;
+    feNegInPlace(&neg_z, &N_LE);
+    var k1: Fe align(8) = undefined;
+    var k2: Fe align(8) = undefined;
+    zisk.arith256ModDirect(&neg_z, &r_inv, &ZERO, &N_LE, &k1);
+    zisk.arith256ModDirect(&s_le, &r_inv, &ZERO, &N_LE, &k2);
+
+    // Q = k1*G + k2*R
+    var Q: [64]u8 align(8) = undefined;
+    var Q2: [64]u8 align(8) = undefined;
+    scalarMul(&Q, &k1, &G_BUF);
+    scalarMul(&Q2, &k2, &R_buf);
+    pointAddInPlace(&Q, &Q2);
+
+    if (isInfinity(&Q)) return null;
 
     // Return uncompressed public key: big-endian x||y (no 0x04 prefix)
     var pubkey: [64]u8 = undefined;
-    @memcpy(pubkey[0..32], &leToBe(&Q.x));
-    @memcpy(pubkey[32..64], &leToBe(&Q.y));
+    const qx = leToBe(Q[0..32]);
+    const qy = leToBe(Q[32..64]);
+    @memcpy(pubkey[0..32], &qx);
+    @memcpy(pubkey[32..64], &qy);
     return pubkey;
 }
 
 // ── Public interface ───────────────────────────────────────────────────────────
 
 /// Recover the 64-byte uncompressed secp256k1 public key from a recoverable
-/// signature.  Returns true and writes to `output` on success; false on failure.
+/// signature. Returns true and writes to `output` on success; false on failure.
 ///
 /// `msg`:   32-byte message hash (big-endian)
 /// `sig`:   64-byte signature r||s (big-endian, each 32 bytes)

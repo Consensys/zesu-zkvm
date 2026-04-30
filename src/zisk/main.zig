@@ -22,6 +22,7 @@ pub const sha256Compress = circuits.sha256Compress;
 
 // Secp256k1 circuits
 pub const secp256k1Add = circuits.secp256k1Add;
+pub const secp256k1AddDirect = circuits.secp256k1AddDirect;
 pub const secp256k1Double = circuits.secp256k1Double;
 
 // BN254 circuits
@@ -41,5 +42,6 @@ pub const bls12_381ComplexMul = circuits.bls12_381ComplexMul;
 // Arithmetic circuits
 pub const arith256 = circuits.arith256;
 pub const arith256Mod = circuits.arith256Mod;
+pub const arith256ModDirect = circuits.arith256ModDirect;
 pub const arith384Mod = circuits.arith384Mod;
 pub const add256 = circuits.add256;
