@@ -75,7 +75,24 @@ export fn _start_main() noreturn {
     zkExit(0);
 }
 
+/// SHA-256 over arbitrary-length data via the ZisK SHA-256 CSR accelerator.
+/// Resolved at link time from accel_impl.zig (same object linked into the exe).
+extern fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32;
+
 /// Guest entry point: read input, deserialize, execute block, write ProofOutput.
+///
+/// Input layout (ere wire format):
+///   [new_payload_request_root: u8; 32]   -- SSZ hash-tree-root, precomputed by host
+///   [block_rlp_len: u64 big-endian]      -- zevm-stateless binary format (unchanged)
+///   [block_rlp bytes]
+///   [state_count u64] [u64 len + node bytes] × N
+///   [codes_count u64] [u64 len + code bytes] × N
+///   [keys_count u64]  [u64 len + key bytes]  × N  (ignored)
+///   [headers_count u64] [u64 len + header RLP] × N
+///
+/// Output layout (ere wire format, matches StatelessValidatorOutput):
+///   sha256([new_payload_request_root (32)] ++ [successful_block_validation (1)])
+///   = 32 bytes
 pub fn main() !void {
     var zisk_alloc = zisk.ZiskAllocator.init();
     const allocator = zisk_alloc.allocator();
@@ -83,22 +100,32 @@ pub fn main() !void {
     const input_data = zkvm_io.read_input_slice();
 
     std.log.info("input_len={d}", .{input_data.len});
-    if (input_data.len == 0) return error.NoInput;
+    if (input_data.len < 32) return error.NoInput;
 
-    const si = try deserialize.fromBytes(allocator, input_data);
+    // First 32 bytes: SSZ hash-tree-root of NewPayloadRequest (precomputed by host).
+    const new_payload_request_root: [32]u8 = input_data[0..32].*;
+    const block_data = input_data[32..];
+
+    const si = try deserialize.fromBytes(allocator, block_data);
     const ep = &si.new_payload_request.execution_payload;
     std.log.info("block={d} txns={d}", .{ ep.block_number, ep.transactions.len });
 
-    const output = try executor.executeStatelessInput(allocator, si, null);
+    const exec_result = executor.executeStatelessInput(allocator, si, null);
+    const success: u8 = if (exec_result) |_| 1 else |err| blk: {
+        std.log.err("execution failed: {s}", .{@errorName(err)});
+        break :blk 0;
+    };
 
-    // Write ProofOutput to zkVM output region
-    // Format: pre_state_root (32) | post_state_root (32) | receipts_root (32)
-    std.log.info("pre-state: 0x{x} ", .{&output.pre_state_root});
-    std.log.info("post-state: 0x{x} ", .{&output.post_state_root});
-    std.log.info("receipts: 0x{x} ", .{&output.receipts_root});
-    zkvm_io.write_output_slice(&output.pre_state_root);
-    zkvm_io.write_output_slice(&output.post_state_root);
-    zkvm_io.write_output_slice(&output.receipts_root);
+    // Encode output as StatelessValidatorOutput: root (32) ++ success (1), then SHA-256.
+    // align(8): SHA-256 CSR requires 8-byte-aligned data and output pointers.
+    var pre_image: [33]u8 align(8) = undefined;
+    pre_image[0..32].* = new_payload_request_root;
+    pre_image[32] = success;
+    var digest: [32]u8 align(8) = undefined;
+    _ = zkvm_sha256(&pre_image, pre_image.len, &digest);
+
+    std.log.info("root: 0x{x} success={d}", .{ &new_payload_request_root, success });
+    zkvm_io.write_output_slice(&digest);
 }
 
 /// Panic handler for freestanding Zisk zkVM target

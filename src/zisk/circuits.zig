@@ -57,11 +57,15 @@ pub fn keccakf(state: *[200]u8) void {
 
 /// SHA-256 compression — 96 bytes (64-byte block + 32-byte state), in-place.
 /// After the call, buf[64..96] contains the new SHA-256 hash state.
+/// CSR 0x805 uses indirect_params=2: expects [*block_ptr, *state_ptr].
+/// Both block (64 bytes) and state (32 bytes) must be 8-byte aligned.
 pub fn sha256Compress(block_and_state: *[96]u8) void {
-    const ptr = @intFromPtr(block_and_state);
+    var params: [2]u64 align(8) = undefined;
+    params[0] = @intFromPtr(block_and_state); // 64-byte message block
+    params[1] = @intFromPtr(block_and_state) + 64; // 32-byte state
     asm volatile ("csrs 0x805, %[ptr]"
         :
-        : [ptr] "r" (ptr),
+        : [ptr] "r" (@intFromPtr(&params)),
         : .{ .memory = true });
 }
 

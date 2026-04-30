@@ -71,13 +71,13 @@ const SHA256_IV: [32]u8 = .{
 };
 
 export fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32 {
-    var state: [32]u8 = SHA256_IV;
+    var state: [32]u8 align(8) = SHA256_IV;
     const bit_len: u64 = @as(u64, len) * 8;
     var offset: usize = 0;
     const d = data[0..len];
 
     while (offset + 64 <= d.len) : (offset += 64) {
-        var buf: [96]u8 = undefined;
+        var buf: [96]u8 align(8) = undefined;
         @memcpy(buf[0..64], d[offset..][0..64]);
         @memcpy(buf[64..96], &state);
         zisk.sha256Compress(&buf);
@@ -85,25 +85,25 @@ export fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32 {
     }
 
     const remaining = d.len - offset;
-    var block1: [64]u8 = .{0} ** 64;
+    var block1: [64]u8 align(8) = .{0} ** 64;
     @memcpy(block1[0..remaining], d[offset..]);
     block1[remaining] = 0x80;
 
     if (remaining < 56) {
         std.mem.writeInt(u64, block1[56..64], bit_len, .big);
-        var buf: [96]u8 = undefined;
+        var buf: [96]u8 align(8) = undefined;
         @memcpy(buf[0..64], &block1);
         @memcpy(buf[64..96], &state);
         zisk.sha256Compress(&buf);
         @memcpy(&state, buf[64..96]);
     } else {
-        var buf: [96]u8 = undefined;
+        var buf: [96]u8 align(8) = undefined;
         @memcpy(buf[0..64], &block1);
         @memcpy(buf[64..96], &state);
         zisk.sha256Compress(&buf);
         @memcpy(&state, buf[64..96]);
 
-        var block2: [64]u8 = .{0} ** 64;
+        var block2: [64]u8 align(8) = .{0} ** 64;
         std.mem.writeInt(u64, block2[56..64], bit_len, .big);
         @memcpy(buf[0..64], &block2);
         @memcpy(buf[64..96], &state);
