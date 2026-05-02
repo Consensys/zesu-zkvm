@@ -1,10 +1,11 @@
 /* Linker script for Zisk zkVM
  * ROM: 0x80000000 - 0x87FFFFFF (128MB) - code and read-only data
  *      Note: 0x87F00000-0x87FFFFFF (last 1MB) reserved for float library
- * RAM: 0xa0020000 - 0xc0000000 (~512MB) - writable data
- *      Note: 0xa0000000-0xa0010000 is system memory (registers, UART, CSRs)
+ * RAM: 0xa0030000 - 0xc0000000 (~512MB) - writable data
+ *      Note: 0xa0000000-0xa0010000 is SYS_ADDR (registers, UART, CSRs)
  *      Note: 0xa0010000-0xa0020000 is OUTPUT_ADDR region
- *      Note: 0xa0030000+ is AVAILABLE_MEM_ADDR (general purpose)
+ *      Note: 0xa0020000-0xa0030000 is reserved gap
+ *      Note: 0xa0030000 is AVAILABLE_MEM_ADDR (general purpose RAM)
  */
 
 OUTPUT_FORMAT("elf64-littleriscv")
@@ -14,7 +15,7 @@ ENTRY(_start)
 MEMORY
 {
     ROM (rx)  : ORIGIN = 0x80000000, LENGTH = 0x08000000
-    RAM (rw)  : ORIGIN = 0xa0020000, LENGTH = 0x1FFE0000
+    RAM (rw)  : ORIGIN = 0xa0030000, LENGTH = 0x1FFD0000
 }
 
 PHDRS
@@ -52,6 +53,7 @@ SECTIONS
     /* Set global pointer after data */
     . = ALIGN(8);
     PROVIDE(__global_pointer$ = .);
+    PROVIDE(_global_pointer = .);  /* alias used by libziskos.a _start */
 
     . = ALIGN(8);
     .bss : {

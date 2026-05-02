@@ -1,25 +1,18 @@
 const std = @import("std");
 
-// Linker-provided symbol: heap starts immediately after the 1MB stack
-extern const _kernel_heap_bottom: u8;
+// Shared bump-allocator state with libziskos.a (defined in alloc/alloc.rs).
+// Both Zig and Rust use the same pointer so interleaved allocations are safe.
+// init_sys_alloc() must be called once before the first allocation.
+extern var ZISK_BUMP_HEAP_POS: usize;
+extern var ZISK_BUMP_HEAP_TOP: usize;
 
-/// Bump allocator backed by the _kernel_heap_bottom linker symbol.
 fn sys_alloc_aligned(bytes: usize, alignment: usize) [*]u8 {
-    const State = struct {
-        var heap_pos: usize = 0;
-    };
-
-    if (State.heap_pos == 0) {
-        State.heap_pos = @intFromPtr(&_kernel_heap_bottom);
-    }
-
-    const offset = State.heap_pos & (alignment - 1);
+    const offset = ZISK_BUMP_HEAP_POS & (alignment - 1);
     if (offset != 0) {
-        State.heap_pos += alignment - offset;
+        ZISK_BUMP_HEAP_POS += alignment - offset;
     }
-
-    const ptr: [*]u8 = @ptrFromInt(State.heap_pos);
-    State.heap_pos += bytes;
+    const ptr: [*]u8 = @ptrFromInt(ZISK_BUMP_HEAP_POS);
+    ZISK_BUMP_HEAP_POS += bytes;
     return ptr;
 }
 

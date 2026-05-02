@@ -46,40 +46,18 @@ fn zkExit(exit_code: u32) noreturn {
     }
 }
 
-// ── Assembly entry point ──────────────────────────────────────────────────────
-// Must be the very first thing in .text._start.  Pure asm: no Zig prologue.
-comptime {
-    asm (
-        \\.section .text._start,"ax",%progbits
-        \\.global _start
-        \\.type _start, @function
-        \\_start:
-        \\  li sp, 0xa0120000    // Initialize stack pointer
-        \\  li gp, 0xa0020000    // Initialize global pointer
-        \\  call _start_main     // Jump to Zig entry
-        \\  .align 4
-        \\1: wfi
-        \\  j 1b
-        \\.size _start, . - _start
-    );
-}
-
-/// First Zig function executed after sp/gp are set by _start
-export fn _start_main() noreturn {
-    main() catch |err| {
-        std.log.err("fatal: {s}", .{@errorName(err)});
-        zkExit(1);
-    };
-
-    std.log.info("ok", .{});
-    zkExit(0);
-}
+// ── Entry point ───────────────────────────────────────────────────────────────
+// libziskos.a provides _start which:
+//   1. Sets gp from _global_pointer linker symbol
+//   2. Sets sp from _init_stack_top linker symbol
+//   3. Calls _zisk_main which calls init_sys_alloc() then calls main()
+// We export main() as the C entry point that _zisk_main invokes.
 
 /// SHA-256 over arbitrary-length data via the ZisK SHA-256 CSR accelerator.
-/// Resolved at link time from accel_impl.zig (same object linked into the exe).
+/// Resolved at link time from libziskos.a.
 extern fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32;
 
-/// Guest entry point: read input, deserialize, execute block, write ProofOutput.
+/// C entry point called by libziskos.a's _zisk_main after allocator init.
 ///
 /// Input layout (ere wire format):
 ///   [new_payload_request_root: u8; 32]   -- SSZ hash-tree-root, precomputed by host
@@ -93,7 +71,16 @@ extern fn zkvm_sha256(data: [*]const u8, len: usize, output: *[32]u8) i32;
 /// Output layout (ere wire format, matches StatelessValidatorOutput):
 ///   sha256([new_payload_request_root (32)] ++ [successful_block_validation (1)])
 ///   = 32 bytes
-pub fn main() !void {
+export fn main() void {
+    guestMain() catch |err| {
+        std.log.err("fatal: {s}", .{@errorName(err)});
+        zkExit(1);
+    };
+    std.log.info("ok", .{});
+    zkExit(0);
+}
+
+fn guestMain() !void {
     var zisk_alloc = zisk.ZiskAllocator.init();
     const allocator = zisk_alloc.allocator();
 
@@ -126,6 +113,14 @@ pub fn main() !void {
 
     std.log.info("root: 0x{x} success={d}", .{ &new_payload_request_root, success });
     zkvm_io.write_output_slice(&digest);
+}
+
+/// Rust std's zkvm Stdin calls this — no stdin in zkVM, return EOF.
+export fn sys_read(fd: i32, buf: [*]u8, count: usize) isize {
+    _ = fd;
+    _ = buf;
+    _ = count;
+    return 0;
 }
 
 /// Panic handler for freestanding Zisk zkVM target
