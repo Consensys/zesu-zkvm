@@ -6,14 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  ZISK_VERSION: "0.17.0"
+  ZISK_TARGET: riscv64ima-zisk-zkvm-elf
+
 jobs:
   ci:
     name: Lint, Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      # Check out all three repos as siblings so the path dependencies resolve:
-      #   $GITHUB_WORKSPACE/zesu-zkvm  ← this repo
+      # Check out all repos as siblings so path dependencies resolve:
+      #   $GITHUB_WORKSPACE/zesu-zkvm   ← this repo
+      #   $GITHUB_WORKSPACE/zesu        ← satisfies ../../zesu/core
+      #   $GITHUB_WORKSPACE/zisk        ← satisfies ZISK_DIR default (../../zisk)
       - name: Checkout zesu-zkvm
         uses: actions/checkout@v4
         with:
@@ -25,23 +31,61 @@ jobs:
           repository: ${{ github.repository_owner }}/zesu
           path: zesu
 
+      - name: Checkout zisk
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk
+          ref: v${{ env.ZISK_VERSION }}
+          path: zisk
+
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: "0.15.2"
+          version: "0.16.0"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-zisk
+        run: |
+          curl -L https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache Zisk Rust toolchain
+        id: cache-zisk-toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup/toolchains/zisk
+          key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Install Zisk Rust toolchain
+        if: steps.cache-zisk-toolchain.outputs.cache-hit != 'true'
+        run: cargo-zisk toolchain install
+
+      - name: Cache libziskos.a
+        id: cache-libziskos
+        uses: actions/cache@v4
+        with:
+          path: zesu-zkvm/zisk/lib/libziskos.a
+          key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Build libziskos.a
+        if: steps.cache-libziskos.outputs.cache-hit != 'true'
+        working-directory: zesu-zkvm/zisk
+        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
       - name: Lint
-        working-directory: zesu-zkvm
+        working-directory: zesu-zkvm/zisk
         run: zig fmt --check src/ build.zig
 
       - name: Build (Debug)
-        working-directory: zesu-zkvm
+        working-directory: zesu-zkvm/zisk
         run: zig build
 
       - name: Build (ReleaseFast)
-        working-directory: zesu-zkvm
+        working-directory: zesu-zkvm/zisk
         run: zig build -Doptimize=ReleaseFast
 
       - name: Test
-        working-directory: zesu-zkvm
+        working-directory: zesu-zkvm/zisk
         run: zig build test --summary all

@@ -9,14 +9,14 @@ zkVM target.
 | Directory | zkVM | Status |
 |---|---|---|
 | [`zisk/`](zisk/) | [Zisk 0.17.0](https://github.com/0xPolygonHermez/zisk) | Working |
-| `sp1/` | [SP1](https://github.com/succinctlabs/sp1) | Planned |
+| `openvm/` | [openvm](https://github.com/openvm-org/openvm/pull/2719) | Planned |
 
 ## Repository layout
 
 ```
 zesu-zkvm/
   zisk/       — Zisk zkVM guest (Zig + libziskos.a)
-  sp1/        — SP1 guest (planned)
+  openvm/        — openvm guest (planned)
 ```
 
 Each target directory contains its own `build.zig`, `Makefile`, and `README.md`.
