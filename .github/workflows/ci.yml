@@ -100,7 +100,7 @@ jobs:
         run: zig build test --summary all
 
   vectors:
-    name: SSZ conformance vectors
+    name: Vectors
     runs-on: ubuntu-latest
 
     steps:
