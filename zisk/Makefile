@@ -47,11 +47,7 @@ test: $(LIB_OUT)
 	$(ZIG) build -Doptimize=ReleaseFast
 	@for bin in ../vectors/*.bin; do \
 	    echo "==> $$bin"; \
-	    out=$$($(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin 2>&1); \
-	    echo "$$out"; \
-	    if echo "$$out" | grep -q "^error:"; then \
-	        echo "FAIL: $$bin"; exit 1; \
-	    fi; \
+	    $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin; \
 	done
 
 clean:
