@@ -24,7 +24,7 @@ CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
 
-.PHONY: all run clean clean-lib check-toolchain
+.PHONY: all run test clean clean-lib check-toolchain
 
 all: $(LIB_OUT)
 	$(ZIG) build
@@ -42,6 +42,17 @@ ifndef INPUT
 	$(error INPUT is required: make run INPUT=path/to/block.bin)
 endif
 	$(ZISKEMU) -e zig-out/bin/zesu-zisk -i $(INPUT)
+
+test: $(LIB_OUT)
+	$(ZIG) build -Doptimize=ReleaseFast
+	@for bin in ../vectors/*.bin; do \
+	    echo "==> $$bin"; \
+	    out=$$($(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin 2>&1); \
+	    echo "$$out"; \
+	    if echo "$$out" | grep -q "^error:"; then \
+	        echo "FAIL: $$bin"; exit 1; \
+	    fi; \
+	done
 
 clean:
 	rm -rf zig-out .zig-cache
