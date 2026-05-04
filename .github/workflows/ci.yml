@@ -48,7 +48,13 @@ jobs:
 
       - name: Install cargo-zisk
         run: |
-          curl -L https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+          ZISK_BIN_DIR="${HOME}/.config/.zisk/bin"
+          mkdir -p "$ZISK_BIN_DIR"
+          curl -fsSL "https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup" \
+            -o "$ZISK_BIN_DIR/ziskup"
+          chmod +x "$ZISK_BIN_DIR/ziskup"
+          "$ZISK_BIN_DIR/ziskup" --cpu --nokey
+          echo "$ZISK_BIN_DIR" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Cache Zisk Rust toolchain
