@@ -24,12 +24,21 @@ CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
 
-.PHONY: all run test bless clean clean-lib check-toolchain
+.PHONY: all run test bless clean clean-lib
 
 all: $(LIB_OUT)
 	$(ZIG) build
 
-$(LIB_OUT): check-toolchain
+$(LIB_OUT):
+	@command -v $(CARGO) >/dev/null 2>&1 || \
+	    { echo "ERROR: cargo not found. Install Rust: https://rustup.rs"; exit 1; }
+	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
+	    { echo "ERROR: Zisk Rust toolchain not installed."; \
+	      echo "       Run: cargo-zisk toolchain install"; exit 1; }
+	@test -d $(ZISK_DIR) || \
+	    { echo "ERROR: ZISK_DIR=$(ZISK_DIR) not found."; \
+	      echo "       Clone zisk 0.17.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
+	      echo "       Or set ZISK_DIR=/path/to/zisk"; exit 1; }
 	@echo "==> Building libziskos.a from $(ZISK_DIR) ..."
 	cd $(ZISK_DIR) && $(CARGO) +zisk build -p $(ZISK_PKG) \
 	    --target $(ZISK_TARGET) --release --no-default-features
@@ -89,14 +98,3 @@ clean:
 
 clean-lib: clean
 	rm -f $(LIB_OUT)
-
-check-toolchain:
-	@command -v $(CARGO) >/dev/null 2>&1 || \
-	    { echo "ERROR: cargo not found. Install Rust: https://rustup.rs"; exit 1; }
-	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
-	    { echo "ERROR: Zisk Rust toolchain not installed."; \
-	      echo "       Run: cargo-zisk toolchain install"; exit 1; }
-	@test -d $(ZISK_DIR) || \
-	    { echo "ERROR: ZISK_DIR=$(ZISK_DIR) not found."; \
-	      echo "       Clone zisk 0.17.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
-	      echo "       Or set ZISK_DIR=/path/to/zisk"; exit 1; }
