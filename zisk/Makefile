@@ -24,7 +24,7 @@ CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
 
-.PHONY: all run test clean clean-lib check-toolchain
+.PHONY: all run test bless clean clean-lib check-toolchain
 
 all: $(LIB_OUT)
 	$(ZIG) build
@@ -45,9 +45,43 @@ endif
 
 test: $(LIB_OUT)
 	$(ZIG) build -Doptimize=ReleaseFast
+	@fail=0; \
+	for bin in ../vectors/*.bin; do \
+	    name=$$(basename $$bin .bin); \
+	    expected=../vectors/$$name.expected.hex; \
+	    out=$$(mktemp); \
+	    echo "==> $$name"; \
+	    if ! $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin -o $$out; then \
+	        echo "  FAIL: ziskemu non-zero exit"; \
+	        fail=1; \
+	    elif [ -f $$expected ]; then \
+	        got=$$(xxd -p -l 41 $$out | tr -d '\n'); \
+	        want=$$(tr -d '[:space:]' < $$expected | sed 's/^0x//' | tr 'A-F' 'a-f'); \
+	        if [ "$$got" = "$$want" ]; then \
+	            echo "  OK"; \
+	        else \
+	            echo "  FAIL"; \
+	            echo "    expected: $$want"; \
+	            echo "    got:      $$got"; \
+	            fail=1; \
+	        fi; \
+	    else \
+	        echo "  (no expected.hex — informational)"; \
+	    fi; \
+	    rm -f $$out; \
+	done; \
+	exit $$fail
+
+bless: $(LIB_OUT)
+	$(ZIG) build -Doptimize=ReleaseFast
 	@for bin in ../vectors/*.bin; do \
-	    echo "==> $$bin"; \
-	    $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin; \
+	    name=$$(basename $$bin .bin); \
+	    expected=../vectors/$$name.expected.hex; \
+	    out=$$(mktemp); \
+	    $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin -o $$out; \
+	    xxd -p -l 41 $$out | tr -d '\n' > $$expected; \
+	    echo "wrote $$expected"; \
+	    rm -f $$out; \
 	done
 
 clean:
