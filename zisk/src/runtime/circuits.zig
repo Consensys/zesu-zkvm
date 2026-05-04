@@ -4,25 +4,34 @@
 /// corresponding CSR address. The circuit executes in-place and overwrites
 /// the result into the buffer.
 ///
-/// CSR address map (0x800–0x811):
-///   0x800  keccakf         — Keccak-f[1600] (200 bytes)
-///   0x801  arith256        — 256-bit multiply-add
-///   0x802  arith256_mod    — 256-bit modular multiply-add
-///   0x803  secp256k1_add   — Secp256k1 point addition
-///   0x804  secp256k1_dbl   — Secp256k1 point doubling
-///   0x805  sha256f         — SHA-256 compression
-///   0x806  bn254_curve_add — BN254 G1 point addition
-///   0x807  bn254_curve_dbl — BN254 G1 point doubling
-///   0x808  bn254_cplx_add  — BN254 Fp2 addition
-///   0x809  bn254_cplx_sub  — BN254 Fp2 subtraction
-///   0x80A  bn254_cplx_mul  — BN254 Fp2 multiplication
-///   0x80B  arith384_mod    — 384-bit modular operations
-///   0x80C  bls12_381_add   — BLS12-381 G1 point addition
-///   0x80D  bls12_381_dbl   — BLS12-381 G1 point doubling
-///   0x80E  bls12_381_fadd  — BLS12-381 Fp2 addition
-///   0x80F  bls12_381_fsub  — BLS12-381 Fp2 subtraction
-///   0x810  bls12_381_fmul  — BLS12-381 Fp2 multiplication
-///   0x811  add256          — 256-bit addition
+/// CSR address map (0x800–0x81A, Zisk 0.17.0):
+///   0x800  keccakf           — Keccak-f[1600] (200 bytes)
+///   0x801  arith256          — 256-bit multiply-add
+///   0x802  arith256_mod      — 256-bit modular multiply-add  (indirect_params=5)
+///   0x803  secp256k1_add     — Secp256k1 point addition      (indirect_params=2)
+///   0x804  secp256k1_dbl     — Secp256k1 point doubling
+///   0x805  sha256f           — SHA-256 compression           (indirect_params=2: {state_ptr, block_ptr})
+///   0x806  bn254_curve_add   — BN254 G1 point addition       (indirect_params=2)
+///   0x807  bn254_curve_dbl   — BN254 G1 point doubling
+///   0x808  bn254_cplx_add    — BN254 Fp2 addition            (indirect_params=2)
+///   0x809  bn254_cplx_sub    — BN254 Fp2 subtraction         (indirect_params=2)
+///   0x80A  bn254_cplx_mul    — BN254 Fp2 multiplication      (indirect_params=2)
+///   0x80B  arith384_mod      — 384-bit modular operations
+///   0x80C  bls12_381_add     — BLS12-381 G1 point addition   (indirect_params=2)
+///   0x80D  bls12_381_dbl     — BLS12-381 G1 point doubling
+///   0x80E  bls12_381_fadd    — BLS12-381 Fp2 addition        (indirect_params=2)
+///   0x80F  bls12_381_fsub    — BLS12-381 Fp2 subtraction     (indirect_params=2)
+///   0x810  bls12_381_fmul    — BLS12-381 Fp2 multiplication  (indirect_params=2)
+///   0x811  add256            — 256-bit addition
+///   0x812  poseidon2         — Poseidon2 hash
+///   0x813  dma_memcpy        — DMA memory copy
+///   0x814  dma_memcmp        — DMA memory compare
+///   0x815  dma_inputcpy      — DMA input copy
+///   0x816  dma_memset        — DMA memory set
+///   0x817  secp256r1_add     — Secp256r1 (P-256) point addition  (indirect_params=2)
+///   0x818  secp256r1_dbl     — Secp256r1 (P-256) point doubling
+///   0x819  blake2b_round     — BLAKE2b single round
+///   0x81A  profile           — Profiling marker
 pub const CircuitCSR = enum(u16) {
     keccakf = 0x800,
     arith256 = 0x801,
@@ -42,6 +51,15 @@ pub const CircuitCSR = enum(u16) {
     bls12_381_complex_sub = 0x80F,
     bls12_381_complex_mul = 0x810,
     add256 = 0x811,
+    poseidon2 = 0x812,
+    dma_memcpy = 0x813,
+    dma_memcmp = 0x814,
+    dma_inputcpy = 0x815,
+    dma_memset = 0x816,
+    secp256r1_add = 0x817,
+    secp256r1_dbl = 0x818,
+    blake2b_round = 0x819,
+    profile = 0x81A,
 };
 
 // ── Basic cryptographic operations ───────────────────────────────────────────
@@ -55,14 +73,15 @@ pub fn keccakf(state: *[200]u8) void {
         : .{ .memory = true });
 }
 
-/// SHA-256 compression — 96 bytes (64-byte block + 32-byte state), in-place.
-/// After the call, buf[64..96] contains the new SHA-256 hash state.
-/// CSR 0x805 uses indirect_params=2: expects [*block_ptr, *state_ptr].
-/// Both block (64 bytes) and state (32 bytes) must be 8-byte aligned.
+/// SHA-256 compression (Zisk 0.17.0 indirect_params=2 convention).
+/// Struct layout: {state_ptr, block_ptr} — state is written back in place.
+/// block_and_state layout (caller): [0..64] = block, [64..96] = state.
+/// After the call buf[64..96] contains the updated SHA-256 state.
 pub fn sha256Compress(block_and_state: *[96]u8) void {
-    var params: [2]u64 align(8) = undefined;
-    params[0] = @intFromPtr(block_and_state); // 64-byte message block
-    params[1] = @intFromPtr(block_and_state) + 64; // 32-byte state
+    var params: [2]u64 align(8) = .{
+        @intFromPtr(block_and_state) + 64, // params[0] = state_ptr (32 bytes at offset 64)
+        @intFromPtr(block_and_state), //      params[1] = block_ptr (64 bytes at offset 0)
+    };
     asm volatile ("csrs 0x805, %[ptr]"
         :
         : [ptr] "r" (@intFromPtr(&params)),
@@ -72,11 +91,11 @@ pub fn sha256Compress(block_and_state: *[96]u8) void {
 // ── Secp256k1 operations ──────────────────────────────────────────────────────
 
 /// Secp256k1 point addition — 128 bytes (P1: 64, P2: 64), result in first 64.
-/// CSR 0x803 uses indirect_params=2: expects a pointer to [*P1, *P2] struct.
+/// CSR 0x803 uses indirect_params=2: expects a pointer to {*P1, *P2} struct.
 pub fn secp256k1Add(points: *[128]u8) void {
     const p1: *Point256 = @ptrCast(@alignCast(points[0..64]));
     const p2: *Point256 = @ptrCast(@alignCast(points[64..128]));
-    var params = Bn254CurveAddParams{ .p1 = p1, .p2 = p2 };
+    var params = CurveAddParams256{ .p1 = p1, .p2 = p2 };
     const ptr = @intFromPtr(&params);
     asm volatile ("csrs 0x803, %[ptr]"
         :
@@ -85,12 +104,10 @@ pub fn secp256k1Add(points: *[128]u8) void {
 }
 
 /// Secp256k1 point addition with separate point pointers — result written to p1.
-/// Eliminates the 128-byte concat buffer: passes p1/p2 directly to the CSR.
-/// Both pointers must be 8-byte aligned. p1 receives the result.
 pub fn secp256k1AddDirect(p1: *[64]u8, p2: *const [64]u8) void {
     const p1_ptr: *Point256 = @ptrCast(@alignCast(p1));
     const p2_ptr: *Point256 = @ptrCast(@alignCast(@constCast(p2)));
-    var params = Bn254CurveAddParams{ .p1 = p1_ptr, .p2 = p2_ptr };
+    var params = CurveAddParams256{ .p1 = p1_ptr, .p2 = p2_ptr };
     asm volatile ("csrs 0x803, %[ptr]"
         :
         : [ptr] "r" (@intFromPtr(&params)),
@@ -113,7 +130,7 @@ pub const Point256 = extern struct {
     y: [4]u64,
 };
 
-pub const Bn254CurveAddParams = extern struct {
+pub const CurveAddParams256 = extern struct {
     p1: *Point256,
     p2: *Point256,
 };
@@ -122,16 +139,20 @@ pub const Fp2Element = extern struct {
     data: [64]u8,
 };
 
-pub const Bn254Fp2BinaryOpParams = extern struct {
+pub const Fp2BinaryOpParams256 = extern struct {
     e1: *Fp2Element,
     e2: *Fp2Element,
 };
+
+// Keep old names as aliases for callers that use them
+pub const Bn254CurveAddParams = CurveAddParams256;
+pub const Bn254Fp2BinaryOpParams = Fp2BinaryOpParams256;
 
 /// BN254 G1 point addition — 128 bytes (P1: 64, P2: 64), result in first 64
 pub fn bn254CurveAdd(points: *[128]u8) void {
     const p1: *Point256 = @ptrCast(@alignCast(points[0..64]));
     const p2: *Point256 = @ptrCast(@alignCast(points[64..128]));
-    var params = Bn254CurveAddParams{ .p1 = p1, .p2 = p2 };
+    var params = CurveAddParams256{ .p1 = p1, .p2 = p2 };
     const ptr = @intFromPtr(&params);
     asm volatile ("csrs 0x806, %[ptr]"
         :
@@ -153,7 +174,7 @@ pub fn bn254CurveDouble(point: *[64]u8) void {
 pub fn bn254ComplexAdd(elements: *[128]u8) void {
     const e1: *Fp2Element = @ptrCast(@alignCast(elements[0..64]));
     const e2: *Fp2Element = @ptrCast(@alignCast(elements[64..128]));
-    var params = Bn254Fp2BinaryOpParams{ .e1 = e1, .e2 = e2 };
+    var params = Fp2BinaryOpParams256{ .e1 = e1, .e2 = e2 };
     const ptr = @intFromPtr(&params);
     asm volatile ("csrs 0x808, %[ptr]"
         :
@@ -165,7 +186,7 @@ pub fn bn254ComplexAdd(elements: *[128]u8) void {
 pub fn bn254ComplexSub(elements: *[128]u8) void {
     const e1: *Fp2Element = @ptrCast(@alignCast(elements[0..64]));
     const e2: *Fp2Element = @ptrCast(@alignCast(elements[64..128]));
-    var params = Bn254Fp2BinaryOpParams{ .e1 = e1, .e2 = e2 };
+    var params = Fp2BinaryOpParams256{ .e1 = e1, .e2 = e2 };
     const ptr = @intFromPtr(&params);
     asm volatile ("csrs 0x809, %[ptr]"
         :
@@ -177,7 +198,7 @@ pub fn bn254ComplexSub(elements: *[128]u8) void {
 pub fn bn254ComplexMul(elements: *[128]u8) void {
     const e1: *Fp2Element = @ptrCast(@alignCast(elements[0..64]));
     const e2: *Fp2Element = @ptrCast(@alignCast(elements[64..128]));
-    var params = Bn254Fp2BinaryOpParams{ .e1 = e1, .e2 = e2 };
+    var params = Fp2BinaryOpParams256{ .e1 = e1, .e2 = e2 };
     const ptr = @intFromPtr(&params);
     asm volatile ("csrs 0x80A, %[ptr]"
         :
@@ -187,12 +208,37 @@ pub fn bn254ComplexMul(elements: *[128]u8) void {
 
 // ── BLS12-381 operations ──────────────────────────────────────────────────────
 
-/// BLS12-381 G1 point addition — 192 bytes (P1: 96, P2: 96), result in first 96
+/// 384-bit point (96 bytes): x(48 LE) || y(48 LE)
+pub const Point384 = extern struct {
+    x: [6]u64,
+    y: [6]u64,
+};
+
+/// indirect_params=2 struct for BLS12-381 curve add
+pub const CurveAddParams384 = extern struct {
+    p1: *Point384,
+    p2: *Point384,
+};
+
+pub const Fp2Element384 = extern struct {
+    data: [96]u8,
+};
+
+/// indirect_params=2 struct for BLS12-381 Fp2 binary ops
+pub const Fp2BinaryOpParams384 = extern struct {
+    e1: *Fp2Element384,
+    e2: *Fp2Element384,
+};
+
+/// BLS12-381 G1 point addition — 192 bytes (P1: 96, P2: 96), result in first 96.
+/// CSR 0x80C uses indirect_params=2: passes {*P1, *P2}.
 pub fn bls12_381CurveAdd(points: *[192]u8) void {
-    const ptr = @intFromPtr(points);
+    const p1: *Point384 = @ptrCast(@alignCast(points[0..96]));
+    const p2: *Point384 = @ptrCast(@alignCast(points[96..192]));
+    var params = CurveAddParams384{ .p1 = p1, .p2 = p2 };
     asm volatile ("csrs 0x80C, %[ptr]"
         :
-        : [ptr] "r" (ptr),
+        : [ptr] "r" (@intFromPtr(&params)),
         : .{ .memory = true });
 }
 
@@ -205,30 +251,92 @@ pub fn bls12_381CurveDouble(point: *[96]u8) void {
         : .{ .memory = true });
 }
 
-/// BLS12-381 Fp2 addition — 192 bytes, result in first 96
+/// BLS12-381 Fp2 addition — 192 bytes, result in first 96.
+/// CSR 0x80E uses indirect_params=2.
 pub fn bls12_381ComplexAdd(elements: *[192]u8) void {
-    const ptr = @intFromPtr(elements);
+    const e1: *Fp2Element384 = @ptrCast(@alignCast(elements[0..96]));
+    const e2: *Fp2Element384 = @ptrCast(@alignCast(elements[96..192]));
+    var params = Fp2BinaryOpParams384{ .e1 = e1, .e2 = e2 };
     asm volatile ("csrs 0x80E, %[ptr]"
         :
-        : [ptr] "r" (ptr),
+        : [ptr] "r" (@intFromPtr(&params)),
         : .{ .memory = true });
 }
 
-/// BLS12-381 Fp2 subtraction — 192 bytes, result in first 96
+/// BLS12-381 Fp2 subtraction — 192 bytes, result in first 96.
 pub fn bls12_381ComplexSub(elements: *[192]u8) void {
-    const ptr = @intFromPtr(elements);
+    const e1: *Fp2Element384 = @ptrCast(@alignCast(elements[0..96]));
+    const e2: *Fp2Element384 = @ptrCast(@alignCast(elements[96..192]));
+    var params = Fp2BinaryOpParams384{ .e1 = e1, .e2 = e2 };
     asm volatile ("csrs 0x80F, %[ptr]"
         :
+        : [ptr] "r" (@intFromPtr(&params)),
+        : .{ .memory = true });
+}
+
+/// BLS12-381 Fp2 multiplication — 192 bytes, result in first 96.
+pub fn bls12_381ComplexMul(elements: *[192]u8) void {
+    const e1: *Fp2Element384 = @ptrCast(@alignCast(elements[0..96]));
+    const e2: *Fp2Element384 = @ptrCast(@alignCast(elements[96..192]));
+    var params = Fp2BinaryOpParams384{ .e1 = e1, .e2 = e2 };
+    asm volatile ("csrs 0x810, %[ptr]"
+        :
+        : [ptr] "r" (@intFromPtr(&params)),
+        : .{ .memory = true });
+}
+
+// ── Secp256r1 (P-256) operations ──────────────────────────────────────────────
+
+/// Secp256r1 point addition — 128 bytes (P1: 64, P2: 64), result in first 64.
+/// CSR 0x817 uses indirect_params=2: passes {*P1, *P2}.
+pub fn secp256r1Add(points: *[128]u8) void {
+    const p1: *Point256 = @ptrCast(@alignCast(points[0..64]));
+    const p2: *Point256 = @ptrCast(@alignCast(points[64..128]));
+    var params = CurveAddParams256{ .p1 = p1, .p2 = p2 };
+    asm volatile ("csrs 0x817, %[ptr]"
+        :
+        : [ptr] "r" (@intFromPtr(&params)),
+        : .{ .memory = true });
+}
+
+/// Secp256r1 point addition with separate pointers — result written to p1.
+pub fn secp256r1AddDirect(p1: *[64]u8, p2: *const [64]u8) void {
+    const p1_ptr: *Point256 = @ptrCast(@alignCast(p1));
+    const p2_ptr: *Point256 = @ptrCast(@alignCast(@constCast(p2)));
+    var params = CurveAddParams256{ .p1 = p1_ptr, .p2 = p2_ptr };
+    asm volatile ("csrs 0x817, %[ptr]"
+        :
+        : [ptr] "r" (@intFromPtr(&params)),
+        : .{ .memory = true });
+}
+
+/// Secp256r1 point doubling — 64-byte point, in-place
+pub fn secp256r1Double(point: *[64]u8) void {
+    const ptr = @intFromPtr(point);
+    asm volatile ("csrs 0x818, %[ptr]"
+        :
         : [ptr] "r" (ptr),
         : .{ .memory = true });
 }
 
-/// BLS12-381 Fp2 multiplication — 192 bytes, result in first 96
-pub fn bls12_381ComplexMul(elements: *[192]u8) void {
-    const ptr = @intFromPtr(elements);
-    asm volatile ("csrs 0x810, %[ptr]"
+// ── BLAKE2b round ─────────────────────────────────────────────────────────────
+
+/// Params struct for blake2b_round CSR: index (value) + two sub-pointers.
+pub const Blake2bRoundParams = extern struct {
+    index: u64,
+    state: *[16]u64,
+    input: *const [16]u64,
+};
+
+/// Execute one BLAKE2b compression round.
+/// index: sigma permutation index in [0, 10).
+/// state: 16×u64 work vector v (modified in place).
+/// input: 16×u64 message block m.
+pub fn blake2bRound(index: u64, state: *[16]u64, input: *const [16]u64) void {
+    var params = Blake2bRoundParams{ .index = index, .state = state, .input = input };
+    asm volatile ("csrs 0x819, %[ptr]"
         :
-        : [ptr] "r" (ptr),
+        : [ptr] "r" (@intFromPtr(&params)),
         : .{ .memory = true });
 }
 
@@ -263,8 +371,6 @@ pub fn arith256Mod(input: *[128]u8) void {
 }
 
 /// Direct 256-bit modular multiply-add: out = (a*b + c) mod m.
-/// Passes all five operand pointers directly — no intermediate 128-byte buffer.
-/// Callers must ensure all pointers are 8-byte aligned. a/b/c/m must not alias out.
 pub fn arith256ModDirect(
     a: *const [32]u8,
     b: *const [32]u8,

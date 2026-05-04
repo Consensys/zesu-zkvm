@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
     // Provides: ZiskAllocator (bump allocator), CSR circuit bindings
     // (keccak, sha256, secp256k1, BN254, BLS12-381, arith256, ...)
     const zisk_mod = b.addModule("zisk", .{
-        .root_source_file = b.path("src/zisk/main.zig"),
+        .root_source_file = b.path("src/runtime/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
     // Replaces zesu-core's default std.heap.c_allocator (unavailable in freestanding).
     // Every EVM module that heap-allocates has this injected.
     const zisk_alloc_mod = b.addModule("zesu_allocator", .{
-        .root_source_file = b.path("src/zisk/zesu_allocator.zig"),
+        .root_source_file = b.path("src/runtime/zesu_allocator.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -53,25 +53,9 @@ pub fn build(b: *std.Build) void {
     // zesu_allocator: override for executor internals (system_calls, transition) in freestanding.
     zesu_core_dep.module("executor").addImport("zesu_allocator", zisk_alloc_mod);
 
-    // ── ZisK accel object: exports zkvm_* symbols via CSR circuit bindings ───
-    // Compiled as a separate object and linked into the exe so the linker
-    // resolves the extern fn zkvm_* declarations in accelerators.zig.
-    // keccak256 and sha256 via Keccak/SHA CSRs; ecrecover via secp256k1 CSRs;
-    // BN254 add/mul/pairing via BN254 curve CSRs; BLS12-381 stubs (TODO).
-    const zisk_accel_obj = b.addObject(.{
-        .name = "zisk_accel",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/zisk/accel_impl.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    zisk_accel_obj.root_module.code_model = .medium;
-    zisk_accel_obj.root_module.addImport("zisk", zisk_mod);
-
     // ── Guest executable ──────────────────────────────────────────────────────
-    // src/main.zig: _start asm entry, UART output, zkExit, panic handler,
-    // main() — reads input, deserializes, executes, writes ProofOutput.
+    // src/main.zig: Zisk harness — UART, ZiskAllocator, zkExit, panic, sys_read.
+    // Calls guestMain() which reads input, deserializes, executes, writes output.
     // src/zkvm_io.zig and src/deserialize.zig are relative imports from main.
     const exe = b.addExecutable(.{
         .name = "zesu-zisk",
@@ -85,7 +69,14 @@ pub fn build(b: *std.Build) void {
     exe.setLinkerScript(b.path("zisk.ld"));
     exe.root_module.code_model = .medium;
 
-    exe.root_module.addObject(zisk_accel_obj);
+    // Link the pre-built Zisk OS library which provides all zkvm_* accelerators
+    // (keccak256, sha256, ecrecover, BN254, BLS12-381, KZG, secp256r1, blake2f, ...)
+    // built from zisk/ziskos/entrypoint for the riscv64ima-zisk-zkvm-elf target.
+    // Use archive semantics (addLibraryPath + linkSystemLibrary) so the linker only
+    // pulls in members that resolve undefined references — prevents duplicate _start.
+    exe.root_module.addLibraryPath(b.path("lib"));
+    exe.root_module.linkSystemLibrary("ziskos", .{ .preferred_link_mode = .static });
+
     exe.root_module.addImport("zisk", zisk_mod);
     exe.root_module.addImport("executor", zesu_core_dep.module("executor"));
     // deserialize.zig imports these as named modules (relative import from main.zig)

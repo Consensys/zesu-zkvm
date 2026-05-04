@@ -11,8 +11,15 @@ zig-cache/
 *.swo
 *~
 
-# zisk build tree
-/zisk/
+# zkVM prebuilt libraries (built by each target's Makefile, not committed)
+zisk/lib/
+sp1/lib/
+
+# Per-zkVM Zig build artifacts
+zisk/zig-out/
+zisk/.zig-cache/
+sp1/zig-out/
+sp1/.zig-cache/
 
 # OS
 .DS_Store

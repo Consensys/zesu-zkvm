@@ -25,6 +25,15 @@ pub const secp256k1Add = circuits.secp256k1Add;
 pub const secp256k1AddDirect = circuits.secp256k1AddDirect;
 pub const secp256k1Double = circuits.secp256k1Double;
 
+// Secp256r1 (P-256) circuits
+pub const secp256r1Add = circuits.secp256r1Add;
+pub const secp256r1AddDirect = circuits.secp256r1AddDirect;
+pub const secp256r1Double = circuits.secp256r1Double;
+
+// BLAKE2b
+pub const blake2bRound = circuits.blake2bRound;
+pub const Blake2bRoundParams = circuits.Blake2bRoundParams;
+
 // BN254 circuits
 pub const bn254CurveAdd = circuits.bn254CurveAdd;
 pub const bn254CurveDouble = circuits.bn254CurveDouble;

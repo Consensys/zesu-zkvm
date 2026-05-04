@@ -9,7 +9,7 @@
         // Native crypto (secp256k1, openssl, blst, mcl) is handled by zesu's own
         // build.zig; this target overrides accel_impl with Zisk CSR implementations.
         .zesu_core = .{
-            .path = "../zesu/core",
+            .path = "../../zesu/core",
         },
     },
 

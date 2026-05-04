@@ -23,6 +23,8 @@
 const std = @import("std");
 const zisk = @import("zisk");
 const secp256k1_impl = @import("./secp256k1.zig");
+const secp256r1_impl = @import("./secp256r1.zig");
+const blake2f_impl = @import("./blake2f.zig");
 const eip196 = @import("./eip196.zig");
 
 // Local pair types — binary-compatible with accelerators.zig and zkvm_accelerators.h.
@@ -196,7 +198,7 @@ export fn zkvm_bn254_pairing(pairs: [*]const Bn254PairingPair, num_pairs: usize,
     return 0;
 }
 
-// ── BLAKE2f — stub ────────────────────────────────────────────────────────────
+// ── BLAKE2f ───────────────────────────────────────────────────────────────────
 
 export fn zkvm_blake2f(
     rounds: u32,
@@ -205,12 +207,9 @@ export fn zkvm_blake2f(
     t: *const [16]u8,
     f: u8,
 ) i32 {
-    _ = rounds;
-    _ = h;
-    _ = m;
-    _ = t;
-    _ = f;
-    return -1;
+    if (f > 1) return -1;
+    blake2f_impl.compress(rounds, h, m, t, f == 1);
+    return 0;
 }
 
 // ── KZG point evaluation — stub ───────────────────────────────────────────────
@@ -282,7 +281,7 @@ export fn zkvm_bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u
     return -1;
 }
 
-// ── secp256r1 verify — stub ───────────────────────────────────────────────────
+// ── secp256r1 verify ──────────────────────────────────────────────────────────
 
 export fn zkvm_secp256r1_verify(
     msg: *const [32]u8,
@@ -290,9 +289,6 @@ export fn zkvm_secp256r1_verify(
     pubkey: *const [64]u8,
     verified: *bool,
 ) i32 {
-    _ = msg;
-    _ = sig;
-    _ = pubkey;
-    verified.* = false;
-    return -1;
+    verified.* = secp256r1_impl.verifySignature(msg, sig, pubkey);
+    return 0;
 }
