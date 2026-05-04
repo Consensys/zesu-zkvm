@@ -12,9 +12,10 @@ const std = @import("std");
 const zisk = @import("zisk");
 
 // ── P-256 constants (little-endian 256-bit integers) ──────────────────────────
+// align(8) on constants ensures word-aligned CSR inputs without runtime cost.
 
 /// Field prime p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1
-const P_LE: Fe = .{
+const P_LE: Fe align(8) = .{
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -22,7 +23,7 @@ const P_LE: Fe = .{
 };
 
 /// Curve order n
-const N_LE: Fe = .{
+const N_LE: Fe align(8) = .{
     0x51, 0x25, 0x63, 0xFC, 0xC2, 0xCA, 0xB9, 0xF3,
     0x84, 0x9E, 0x17, 0xA7, 0xAD, 0xFA, 0xE6, 0xBC,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -30,7 +31,7 @@ const N_LE: Fe = .{
 };
 
 /// Generator x-coordinate
-const GX_LE: Fe = .{
+const GX_LE: Fe align(8) = .{
     0x96, 0xC2, 0x98, 0xD8, 0x45, 0x39, 0xA1, 0xF4,
     0xA0, 0x33, 0xEB, 0x2D, 0x81, 0x7D, 0x03, 0x77,
     0xF2, 0x40, 0xA4, 0x63, 0xE5, 0xE6, 0xBC, 0xF8,
@@ -38,7 +39,7 @@ const GX_LE: Fe = .{
 };
 
 /// Generator y-coordinate
-const GY_LE: Fe = .{
+const GY_LE: Fe align(8) = .{
     0xF5, 0x51, 0xBF, 0x37, 0x68, 0x40, 0xB6, 0xCB,
     0xCE, 0x5E, 0x31, 0x6B, 0x57, 0x33, 0xCE, 0x2B,
     0x16, 0x9E, 0x0F, 0x7C, 0x4A, 0xEB, 0xE7, 0x8E,
@@ -62,12 +63,12 @@ const ONE: Fe align(8) = .{1} ++ (.{0} ** 31);
 const Fe = [32]u8;
 
 /// A P-256 affine point. null = point at infinity.
-const Point = struct { x: Fe, y: Fe };
+const Point = struct { x: Fe align(8), y: Fe align(8) };
 
 // ── Byte-order helpers ─────────────────────────────────────────────────────────
 
 fn beToLe(be: *const [32]u8) Fe {
-    var le: Fe = undefined;
+    var le: Fe align(8) = undefined;
     for (0..32) |i| le[i] = be[31 - i];
     return le;
 }
@@ -184,19 +185,19 @@ fn doVerify(
     qx_be: *const [32]u8,
     qy_be: *const [32]u8,
 ) bool {
-    const r_le = beToLe(r_be);
-    const s_le = beToLe(s_be);
+    var r_le: Fe align(8) = beToLe(r_be);
+    var s_le: Fe align(8) = beToLe(s_be);
 
     if (feIsZero(&r_le) or !feNumericLessThan(&r_le, &N_LE)) return false;
     if (feIsZero(&s_le) or !feNumericLessThan(&s_le, &N_LE)) return false;
 
-    const hash_le = beToLe(hash_be);
+    var hash_le: Fe align(8) = beToLe(hash_be);
     // Reduce hash mod n
-    const z_le = feMul(&hash_le, &ONE, &N_LE);
+    var z_le: Fe align(8) = feMul(&hash_le, &ONE, &N_LE);
 
-    const w = feInvN(&s_le);
-    const k1 = feMul(&z_le, &w, &N_LE);
-    const k2 = feMul(&r_le, &w, &N_LE);
+    var w: Fe align(8) = feInvN(&s_le);
+    var k1: Fe align(8) = feMul(&z_le, &w, &N_LE);
+    var k2: Fe align(8) = feMul(&r_le, &w, &N_LE);
 
     const G = Point{ .x = GX_LE, .y = GY_LE };
     const Q = Point{ .x = beToLe(qx_be), .y = beToLe(qy_be) };
