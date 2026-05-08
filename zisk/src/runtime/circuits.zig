@@ -74,9 +74,9 @@ pub fn keccakf(state: *[200]u8) void {
 }
 
 /// SHA-256 compression (Zisk 0.17.0 indirect_params=2 convention).
-/// Struct layout: {state_ptr, block_ptr} — state is written back in place.
-/// block_and_state layout (caller): [0..64] = block, [64..96] = state.
-/// After the call buf[64..96] contains the updated SHA-256 state.
+/// Struct layout: {state_ptr, block_ptr} matching SyscallSha256Params{state, input}.
+/// State is 32 bytes (8 x u32 in native LE byte order); block is 64 bytes.
+/// After the call buf[64..96] contains the updated SHA-256 state (LE u32 format).
 pub fn sha256Compress(block_and_state: *[96]u8) void {
     var params: [2]u64 align(8) = .{
         @intFromPtr(block_and_state) + 64, // params[0] = state_ptr (32 bytes at offset 64)
