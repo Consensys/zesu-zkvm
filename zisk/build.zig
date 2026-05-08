@@ -55,8 +55,8 @@ pub fn build(b: *std.Build) void {
 
     // ── Guest executable ──────────────────────────────────────────────────────
     // src/main.zig: Zisk harness — UART, ZiskAllocator, zkExit, panic, sys_read.
-    // Calls guestMain() which reads input, deserializes, executes, writes output.
-    // src/zkvm_io.zig and src/deserialize.zig are relative imports from main.
+    // Calls guestMain() which reads SSZ input, executes, writes SSZ output.
+    // src/zkvm_io.zig is a relative import from main.
     const exe = b.addExecutable(.{
         .name = "zesu-zisk",
         .root_module = b.createModule(.{
@@ -79,11 +79,8 @@ pub fn build(b: *std.Build) void {
 
     exe.root_module.addImport("zisk", zisk_mod);
     exe.root_module.addImport("executor", zesu_core_dep.module("executor"));
-    // deserialize.zig imports these as named modules (relative import from main.zig)
-    exe.root_module.addImport("input", zesu_core_dep.module("input"));
-    exe.root_module.addImport("primitives", zesu_core_dep.module("primitives"));
-    exe.root_module.addImport("mpt", zesu_core_dep.module("mpt"));
-    exe.root_module.addImport("rlp_decode", zesu_core_dep.module("rlp_decode"));
+    exe.root_module.addImport("ssz_decode", zesu_core_dep.module("ssz_decode"));
+    exe.root_module.addImport("ssz_output", zesu_core_dep.module("ssz_output"));
 
     b.installArtifact(exe);
 

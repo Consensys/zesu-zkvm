@@ -24,12 +24,21 @@ CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
 
-.PHONY: all run clean clean-lib check-toolchain
+.PHONY: all run test bless clean clean-lib
 
 all: $(LIB_OUT)
 	$(ZIG) build
 
-$(LIB_OUT): check-toolchain
+$(LIB_OUT):
+	@command -v $(CARGO) >/dev/null 2>&1 || \
+	    { echo "ERROR: cargo not found. Install Rust: https://rustup.rs"; exit 1; }
+	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
+	    { echo "ERROR: Zisk Rust toolchain not installed."; \
+	      echo "       Run: cargo-zisk toolchain install"; exit 1; }
+	@test -d $(ZISK_DIR) || \
+	    { echo "ERROR: ZISK_DIR=$(ZISK_DIR) not found."; \
+	      echo "       Clone zisk 0.17.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
+	      echo "       Or set ZISK_DIR=/path/to/zisk"; exit 1; }
 	@echo "==> Building libziskos.a from $(ZISK_DIR) ..."
 	cd $(ZISK_DIR) && $(CARGO) +zisk build -p $(ZISK_PKG) \
 	    --target $(ZISK_TARGET) --release --no-default-features
@@ -43,19 +52,49 @@ ifndef INPUT
 endif
 	$(ZISKEMU) -e zig-out/bin/zesu-zisk -i $(INPUT)
 
+test: $(LIB_OUT)
+	$(ZIG) build -Doptimize=ReleaseFast
+	@fail=0; \
+	for bin in ../vectors/*.bin; do \
+	    name=$$(basename $$bin .bin); \
+	    expected=../vectors/$$name.expected.hex; \
+	    out=$$(mktemp); \
+	    echo "==> $$name"; \
+	    if ! $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin -o $$out; then \
+	        echo "  FAIL: ziskemu non-zero exit"; \
+	        fail=1; \
+	    elif [ -f $$expected ]; then \
+	        got=$$(xxd -p -l 41 $$out | tr -d '\n'); \
+	        want=$$(tr -d '[:space:]' < $$expected | sed 's/^0x//' | tr 'A-F' 'a-f'); \
+	        if [ "$$got" = "$$want" ]; then \
+	            echo "  OK"; \
+	        else \
+	            echo "  FAIL"; \
+	            echo "    expected: $$want"; \
+	            echo "    got:      $$got"; \
+	            fail=1; \
+	        fi; \
+	    else \
+	        echo "  (no expected.hex — informational)"; \
+	    fi; \
+	    rm -f $$out; \
+	done; \
+	exit $$fail
+
+bless: $(LIB_OUT)
+	$(ZIG) build -Doptimize=ReleaseFast
+	@for bin in ../vectors/*.bin; do \
+	    name=$$(basename $$bin .bin); \
+	    expected=../vectors/$$name.expected.hex; \
+	    out=$$(mktemp); \
+	    $(ZISKEMU) -e zig-out/bin/zesu-zisk -i $$bin -o $$out; \
+	    xxd -p -l 41 $$out | tr -d '\n' > $$expected; \
+	    echo "wrote $$expected"; \
+	    rm -f $$out; \
+	done
+
 clean:
 	rm -rf zig-out .zig-cache
 
 clean-lib: clean
 	rm -f $(LIB_OUT)
-
-check-toolchain:
-	@command -v $(CARGO) >/dev/null 2>&1 || \
-	    { echo "ERROR: cargo not found. Install Rust: https://rustup.rs"; exit 1; }
-	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
-	    { echo "ERROR: Zisk Rust toolchain not installed."; \
-	      echo "       Run: cargo-zisk toolchain install"; exit 1; }
-	@test -d $(ZISK_DIR) || \
-	    { echo "ERROR: ZISK_DIR=$(ZISK_DIR) not found."; \
-	      echo "       Clone zisk 0.17.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
-	      echo "       Or set ZISK_DIR=/path/to/zisk"; exit 1; }

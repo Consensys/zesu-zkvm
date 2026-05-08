@@ -98,3 +98,75 @@ jobs:
       - name: Test
         working-directory: zesu-zkvm/zisk
         run: zig build test --summary all
+
+  vectors:
+    name: Vectors
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@v4
+        with:
+          path: zesu-zkvm
+
+      - name: Checkout zesu
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/zesu
+          path: zesu
+
+      - name: Checkout zisk
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk
+          ref: v${{ env.ZISK_VERSION }}
+          path: zisk
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-zisk runtime deps
+        run: sudo apt-get install -y libomp5 libopenmpi3t64
+
+      - name: Install cargo-zisk
+        run: |
+          ZISK_BIN_DIR="${HOME}/.config/.zisk/bin"
+          mkdir -p "$ZISK_BIN_DIR"
+          curl -fsSL "https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup" \
+            -o "$ZISK_BIN_DIR/ziskup"
+          chmod +x "$ZISK_BIN_DIR/ziskup"
+          "$ZISK_BIN_DIR/ziskup" --cpu --nokey
+          echo "$ZISK_BIN_DIR" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache Zisk Rust toolchain
+        id: cache-zisk-toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup/toolchains/zisk
+          key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Install Zisk Rust toolchain
+        if: steps.cache-zisk-toolchain.outputs.cache-hit != 'true'
+        run: cargo-zisk toolchain install
+
+      - name: Cache libziskos.a
+        id: cache-libziskos
+        uses: actions/cache@v4
+        with:
+          path: zesu-zkvm/zisk/lib/libziskos.a
+          key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Build libziskos.a
+        if: steps.cache-libziskos.outputs.cache-hit != 'true'
+        working-directory: zesu-zkvm/zisk
+        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
+
+      - name: Run vectors
+        working-directory: zesu-zkvm/zisk
+        run: make test
