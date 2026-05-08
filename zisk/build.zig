@@ -53,10 +53,22 @@ pub fn build(b: *std.Build) void {
     // zesu_allocator: override for executor internals (system_calls, transition) in freestanding.
     zesu_core_dep.module("executor").addImport("zesu_allocator", zisk_alloc_mod);
 
+    // ── ZisK zkvm_io: memory-mapped I/O per zkvm-standards ───────────────────
+    const zisk_io_mod = b.createModule(.{
+        .root_source_file = b.path("src/zkvm_io.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // runner: zesu's SSZ stream execution entry point.
+    // Inject the ZisK-specific zkvm_io so runStateless reads from the
+    // memory-mapped input region and returns SSZ output bytes.
+    const runner_mod = zesu_core_dep.module("runner");
+    runner_mod.addImport("zkvm_io", zisk_io_mod);
+
     // ── Guest executable ──────────────────────────────────────────────────────
-    // src/main.zig: Zisk harness — UART, ZiskAllocator, zkExit, panic, sys_read.
-    // Calls guestMain() which reads SSZ input, executes, writes SSZ output.
-    // src/zkvm_io.zig is a relative import from main.
+    // src/main.zig: ZisK harness only — UART, ZiskAllocator, zkExit, panic,
+    // sys_read. Calls runner.runStateless() for all execution logic.
     const exe = b.addExecutable(.{
         .name = "zesu-zisk",
         .root_module = b.createModule(.{
@@ -78,9 +90,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("ziskos", .{ .preferred_link_mode = .static });
 
     exe.root_module.addImport("zisk", zisk_mod);
-    exe.root_module.addImport("executor", zesu_core_dep.module("executor"));
-    exe.root_module.addImport("ssz_decode", zesu_core_dep.module("ssz_decode"));
-    exe.root_module.addImport("ssz_output", zesu_core_dep.module("ssz_output"));
+    exe.root_module.addImport("runner", runner_mod);
+    exe.root_module.addImport("zkvm_io", zisk_io_mod);
 
     b.installArtifact(exe);
 

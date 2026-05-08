@@ -37,24 +37,11 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
 }
 
 /// Write public output data. Multiple calls concatenate sequentially.
-pub fn write_output(output: [*]const u8, size: usize) void {
-    if (output_pos + size > ZISK_OUTPUT_SIZE) {
+pub fn write_output(output: []const u8) void {
+    if (output_pos + output.len > ZISK_OUTPUT_SIZE) {
         @panic("Output exceeds OUTPUT region size (64KB)");
     }
     const output_region: [*]u8 = @ptrFromInt(ZISK_OUTPUT_BASE);
-    @memcpy((output_region + output_pos)[0..size], output[0..size]);
-    output_pos += size;
-}
-
-/// Helper: read input as a slice
-pub fn read_input_slice() []const u8 {
-    var buf_ptr: [*]const u8 = undefined;
-    var buf_size: usize = 0;
-    read_input(&buf_ptr, &buf_size);
-    return buf_ptr[0..buf_size];
-}
-
-/// Helper: write output from a slice
-pub fn write_output_slice(output: []const u8) void {
-    write_output(output.ptr, output.len);
+    @memcpy((output_region + output_pos)[0..output.len], output);
+    output_pos += output.len;
 }
