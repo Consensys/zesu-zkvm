@@ -18,8 +18,11 @@ sp1/lib/
 # Per-zkVM Zig build artifacts
 zisk/zig-out/
 zisk/.zig-cache/
-sp1/zig-out/
-sp1/.zig-cache/
+
+# omit openvm runner build tree
+openvm/runner/target/
+openvm/.zig-cache/
+opemvn/zig-out
 
 # OS
 .DS_Store
