@@ -249,10 +249,10 @@ fn bigShiftInto(dst: []u8, m: []const u8, shift: usize) void {
     }
 }
 
-fn bigReduce(a: []u8, m: []const u8) void {
+fn bigReduce(alloc: std.mem.Allocator, a: []u8, m: []const u8) !void {
     if (bigCmp(a, m) == .lt) return;
-    var shifted_buf: [2048]u8 = undefined;
-    const shifted_m = shifted_buf[0..a.len];
+    const shifted_m = try alloc.alloc(u8, a.len);
+    defer alloc.free(shifted_m);
     while (bigCmp(a, m) != .lt) {
         const a_bl = bigBitLen(a);
         const m_bl = bigBitLen(m);
@@ -266,7 +266,7 @@ fn bigReduce(a: []u8, m: []const u8) void {
     }
 }
 
-fn bigModMulInto(scratch: []u8, a: []const u8, b: []const u8, m: []const u8, out: []u8) void {
+fn bigModMulInto(alloc: std.mem.Allocator, scratch: []u8, a: []const u8, b: []const u8, m: []const u8, out: []u8) !void {
     @memset(scratch, 0);
     var ai: usize = 0;
     while (ai < a.len) : (ai += 1) {
@@ -289,7 +289,7 @@ fn bigModMulInto(scratch: []u8, a: []const u8, b: []const u8, m: []const u8, out
             ci -= 1;
         }
     }
-    bigReduce(scratch, m);
+    try bigReduce(alloc, scratch, m);
     @memset(out, 0);
     const src_start = scratch.len - @min(scratch.len, out.len);
     const dst_start = out.len - (scratch.len - src_start);
@@ -303,12 +303,21 @@ fn modexpGeneral(alloc: std.mem.Allocator, base: []const u8, exp: []const u8, mo
     @memset(result, 0);
     if (n > 0) result[n - 1] = 1;
 
+    // Reduce base mod modulus using the full base value to avoid dropping high-order bytes.
     const a = try alloc.alloc(u8, n);
     defer alloc.free(a);
-    @memset(a, 0);
-    const base_copy_len = @min(base.len, n);
-    @memcpy(a[n - base_copy_len ..], base[base.len - base_copy_len ..]);
-    bigReduce(a, modulus);
+    if (base.len <= n) {
+        @memset(a, 0);
+        @memcpy(a[n - base.len ..], base);
+        try bigReduce(alloc, a, modulus);
+    } else {
+        const a_big = try alloc.alloc(u8, base.len);
+        defer alloc.free(a_big);
+        @memcpy(a_big, base);
+        try bigReduce(alloc, a_big, modulus);
+        @memset(a, 0);
+        @memcpy(a[n - @min(n, a_big.len) ..], a_big[a_big.len - @min(n, a_big.len) ..]);
+    }
 
     const tmp = try alloc.alloc(u8, n);
     defer alloc.free(tmp);
@@ -326,11 +335,11 @@ fn modexpGeneral(alloc: std.mem.Allocator, base: []const u8, exp: []const u8, mo
         const byte_idx = i / 8;
         const bit_idx: u3 = @intCast(i % 8);
         if ((exp[exp.len - 1 - byte_idx] >> bit_idx) & 1 != 0) {
-            bigModMulInto(scratch, result, a, modulus, tmp);
+            try bigModMulInto(alloc, scratch, result, a, modulus, tmp);
             @memcpy(result, tmp);
         }
         if (i < highest_bit) {
-            bigModMulInto(scratch, a, a, modulus, tmp);
+            try bigModMulInto(alloc, scratch, a, a, modulus, tmp);
             @memcpy(a, tmp);
         }
     }
