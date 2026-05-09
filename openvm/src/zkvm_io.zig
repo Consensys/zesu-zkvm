@@ -83,6 +83,13 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
     hintStoreU64(&len_buf);
     const total_len = len_buf;
 
+    // Validate before reading: a malformed or oversized hint stream must not
+    // write past input_buf.  total_len includes the 8-byte payload_len header
+    // plus the padded SSZ body, so it must fit within MAX_INPUT_SIZE.
+    if (total_len > MAX_INPUT_SIZE) {
+        @panic("hint-stream total_len exceeds MAX_INPUT_SIZE");
+    }
+
     // Read all file bytes into input_buf (already rounded to dword boundary
     // by the executor's padding, but div-ceil is safe either way).
     const num_dwords = (total_len + 7) / 8;

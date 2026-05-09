@@ -35,7 +35,7 @@ run: all
 ifndef INPUT
 	$(error INPUT is required: make run INPUT=path/to/block.bin)
 endif
-	$(RUNNER) $(ELF) $(INPUT)
+	$(RUNNER) -e $(ELF) -i $(INPUT)
 
 test: runner
 	$(ZIG) build -Doptimize=ReleaseFast
@@ -45,7 +45,7 @@ test: runner
 	    expected=../vectors/$$name.expected.hex; \
 	    out=$$(mktemp); \
 	    echo "==> $$name"; \
-	    if ! $(RUNNER) $(ELF) $$bin -o $$out; then \
+	    if ! $(RUNNER) -e $(ELF) -i $$bin -o $$out; then \
 	        echo "  FAIL: runner non-zero exit"; \
 	        fail=1; \
 	    elif [ -f $$expected ]; then \
@@ -72,7 +72,7 @@ bless: runner
 	    name=$$(basename $$bin .bin); \
 	    expected=../vectors/$$name.expected.hex; \
 	    out=$$(mktemp); \
-	    $(RUNNER) $(ELF) $$bin -o $$out; \
+	    $(RUNNER) -e $(ELF) -i $$bin -o $$out; \
 	    xxd -p -l 41 $$out | tr -d '\n' > $$expected; \
 	    echo "wrote $$expected"; \
 	    rm -f $$out; \

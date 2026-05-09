@@ -22,7 +22,7 @@ zisk/.zig-cache/
 # omit openvm runner build tree
 openvm/runner/target/
 openvm/.zig-cache/
-opemvn/zig-out
+openvm/zig-out
 
 # OS
 .DS_Store
