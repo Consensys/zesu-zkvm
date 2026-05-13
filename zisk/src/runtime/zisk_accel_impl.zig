@@ -424,35 +424,194 @@ pub fn kzg_point_eval(commitment: *const [48]u8, z: *const [32]u8, y: *const [32
 // ── BLS12-381 — delegated to libziskos.a ──────────────────────────────────────
 // G1/G2 and Fp2 CSRs exist, but MSM, pairing, and map-to-curve software is
 // not yet implemented.
+//
+// Infinity is the canonical all-zero buffer (96 bytes for G1, 192 for G2) per
+// EIP-2537. libziskos's affine-add path treats (0, 0) as a non-curve point and
+// returns failure for inf+inf / inf+P / inf-pair MSM. We short-circuit those
+// cases here so the host emits the spec-mandated identity behavior. (The other
+// BLS12-381 divergence — missing subgroup checks for non-prime-order points —
+// is an upstream libziskos issue and is not handled here.)
+//
+// We also enforce EIP-2537's field-membership requirement (each 48-byte coord
+// must be < p_BLS12_381) before delegating. libziskos's BLS12 path doesn't
+// validate this; without the check, inputs like `x = p` or `x_above_modulus`
+// are silently accepted and produce non-spec output.
+
+/// BLS12-381 base-field prime p, big-endian (matches the EIP-2537 wire format
+/// passed in by `default_impls.zig`). Source: zisk bls12_381/constants.rs.
+const BLS12_P_BE: [48]u8 = .{
+    0x1a, 0x01, 0x11, 0xea, 0x39, 0x7f, 0xe6, 0x9a,
+    0x4b, 0x1b, 0xa7, 0xb6, 0x43, 0x4b, 0xac, 0xd7,
+    0x64, 0x77, 0x4b, 0x84, 0xf3, 0x85, 0x12, 0xbf,
+    0x67, 0x30, 0xd2, 0xa0, 0xf6, 0xb0, 0xf6, 0x24,
+    0x1e, 0xab, 0xff, 0xfe, 0xb1, 0x53, 0xff, 0xff,
+    0xb9, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xab,
+};
+
+/// MSB-first byte comparison: returns true if a < b interpreted as 48-byte
+/// big-endian unsigned integers. Infinity (all zeros) satisfies a < p trivially.
+fn fpLt48BE(a: *const [48]u8, b: *const [48]u8) bool {
+    for (0..48) |i| {
+        if (a[i] < b[i]) return true;
+        if (a[i] > b[i]) return false;
+    }
+    return false;
+}
+
+fn bls12G1FieldsValid(point: *const [96]u8) bool {
+    return fpLt48BE(point[0..48], &BLS12_P_BE) and
+        fpLt48BE(point[48..96], &BLS12_P_BE);
+}
+
+fn bls12G2FieldsValid(point: *const [192]u8) bool {
+    return fpLt48BE(point[0..48], &BLS12_P_BE) and
+        fpLt48BE(point[48..96], &BLS12_P_BE) and
+        fpLt48BE(point[96..144], &BLS12_P_BE) and
+        fpLt48BE(point[144..192], &BLS12_P_BE);
+}
 
 pub fn bls12_g1_add(p1: *const [96]u8, p2: *const [96]u8, result: *[96]u8) bool {
+    if (!bls12G1FieldsValid(p1)) return false;
+    if (!bls12G1FieldsValid(p2)) return false;
+    const p1_inf = std.mem.allEqual(u8, p1[0..], 0);
+    const p2_inf = std.mem.allEqual(u8, p2[0..], 0);
+    if (p1_inf and p2_inf) {
+        @memset(result, 0);
+        return true;
+    }
+    if (p1_inf) {
+        @memcpy(result, p2);
+        return true;
+    }
+    if (p2_inf) {
+        @memcpy(result, p1);
+        return true;
+    }
+    // P + (−P) = ∞: same x with different y forms a vertical line. libziskos's
+    // affine-add path can't represent the result and returns failure; native
+    // libblst returns the canonical all-zero infinity buffer.
+    if (std.mem.eql(u8, p1[0..48], p2[0..48]) and !std.mem.eql(u8, p1[48..96], p2[48..96])) {
+        @memset(result, 0);
+        return true;
+    }
     return zkvm_bls12_g1_add(p1, p2, result) == 0;
 }
 
 pub fn bls12_g1_msm(pairs: anytype, result: *[96]u8) bool {
-    const ptr: [*]const Bls12G1MsmPair = @ptrCast(pairs.ptr);
-    return zkvm_bls12_g1_msm(ptr, pairs.len, result) == 0;
+    // Field-membership: every input point's coordinates must be < p, regardless
+    // of whether that pair would later be skipped (e.g. malformed-coord-with-scalar=0
+    // is still a malformed input per EIP-2537).
+    for (pairs) |p| {
+        if (!bls12G1FieldsValid(&p.point)) return false;
+    }
+    // Skip pairs that contribute zero to the sum: point = ∞ or scalar = 0.
+    // libziskos's MSM doesn't canonicalize these cases and they otherwise
+    // return failure / wrong output for tests like `all_zero_scalars`,
+    // `bls_g1msm_(0*g1=inf)`, and `multiple_points_zero_scalar`.
+    var n_valid: usize = 0;
+    for (pairs) |p| {
+        if (std.mem.allEqual(u8, p.point[0..], 0)) continue;
+        if (std.mem.allEqual(u8, p.scalar[0..], 0)) continue;
+        n_valid += 1;
+    }
+    if (n_valid == 0) {
+        @memset(result, 0);
+        return true;
+    }
+    if (n_valid == pairs.len) {
+        const ptr: [*]const Bls12G1MsmPair = @ptrCast(pairs.ptr);
+        return zkvm_bls12_g1_msm(ptr, pairs.len, result) == 0;
+    }
+    var allocator_state = zisk.ZiskAllocator.init();
+    const alloc = allocator_state.allocator();
+    const filtered = alloc.alloc(Bls12G1MsmPair, n_valid) catch return false;
+    defer alloc.free(filtered);
+    var idx: usize = 0;
+    for (pairs) |p| {
+        if (std.mem.allEqual(u8, p.point[0..], 0)) continue;
+        if (std.mem.allEqual(u8, p.scalar[0..], 0)) continue;
+        filtered[idx] = .{ .point = p.point, .scalar = p.scalar };
+        idx += 1;
+    }
+    return zkvm_bls12_g1_msm(filtered.ptr, filtered.len, result) == 0;
 }
 
 pub fn bls12_g2_add(p1: *const [192]u8, p2: *const [192]u8, result: *[192]u8) bool {
+    if (!bls12G2FieldsValid(p1)) return false;
+    if (!bls12G2FieldsValid(p2)) return false;
+    const p1_inf = std.mem.allEqual(u8, p1[0..], 0);
+    const p2_inf = std.mem.allEqual(u8, p2[0..], 0);
+    if (p1_inf and p2_inf) {
+        @memset(result, 0);
+        return true;
+    }
+    if (p1_inf) {
+        @memcpy(result, p2);
+        return true;
+    }
+    if (p2_inf) {
+        @memcpy(result, p1);
+        return true;
+    }
+    // P + (−P) = ∞ for G2 (Fp2 x is 96 bytes, Fp2 y is 96 bytes).
+    if (std.mem.eql(u8, p1[0..96], p2[0..96]) and !std.mem.eql(u8, p1[96..192], p2[96..192])) {
+        @memset(result, 0);
+        return true;
+    }
     return zkvm_bls12_g2_add(p1, p2, result) == 0;
 }
 
 pub fn bls12_g2_msm(pairs: anytype, result: *[192]u8) bool {
-    const ptr: [*]const Bls12G2MsmPair = @ptrCast(pairs.ptr);
-    return zkvm_bls12_g2_msm(ptr, pairs.len, result) == 0;
+    // Field-membership validation on every pair — see bls12_g1_msm for rationale.
+    for (pairs) |p| {
+        if (!bls12G2FieldsValid(&p.point)) return false;
+    }
+    // Same zero-contribution filter as g1_msm: skip ∞ points and zero scalars.
+    var n_valid: usize = 0;
+    for (pairs) |p| {
+        if (std.mem.allEqual(u8, p.point[0..], 0)) continue;
+        if (std.mem.allEqual(u8, p.scalar[0..], 0)) continue;
+        n_valid += 1;
+    }
+    if (n_valid == 0) {
+        @memset(result, 0);
+        return true;
+    }
+    if (n_valid == pairs.len) {
+        const ptr: [*]const Bls12G2MsmPair = @ptrCast(pairs.ptr);
+        return zkvm_bls12_g2_msm(ptr, pairs.len, result) == 0;
+    }
+    var allocator_state = zisk.ZiskAllocator.init();
+    const alloc = allocator_state.allocator();
+    const filtered = alloc.alloc(Bls12G2MsmPair, n_valid) catch return false;
+    defer alloc.free(filtered);
+    var idx: usize = 0;
+    for (pairs) |p| {
+        if (std.mem.allEqual(u8, p.point[0..], 0)) continue;
+        if (std.mem.allEqual(u8, p.scalar[0..], 0)) continue;
+        filtered[idx] = .{ .point = p.point, .scalar = p.scalar };
+        idx += 1;
+    }
+    return zkvm_bls12_g2_msm(filtered.ptr, filtered.len, result) == 0;
 }
 
 pub fn bls12_pairing(pairs: anytype, verified: *bool) bool {
+    for (pairs) |p| {
+        if (!bls12G1FieldsValid(&p.g1)) return false;
+        if (!bls12G2FieldsValid(&p.g2)) return false;
+    }
     const ptr: [*]const Bls12PairingPair = @ptrCast(pairs.ptr);
     return zkvm_bls12_pairing(ptr, pairs.len, verified) == 0;
 }
 
 pub fn bls12_map_fp_to_g1(field_element: *const [48]u8, result: *[96]u8) bool {
+    if (!fpLt48BE(field_element, &BLS12_P_BE)) return false;
     return zkvm_bls12_map_fp_to_g1(field_element, result) == 0;
 }
 
 pub fn bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u8) bool {
+    if (!fpLt48BE(field_element[0..48], &BLS12_P_BE)) return false;
+    if (!fpLt48BE(field_element[48..96], &BLS12_P_BE)) return false;
     return zkvm_bls12_map_fp2_to_g2(field_element, result) == 0;
 }
 
