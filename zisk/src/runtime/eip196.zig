@@ -6,6 +6,20 @@ const std = @import("std");
 const zisk = @import("zisk");
 const bn254_pairing = @import("./bn254_pairing.zig");
 
+// ── BN254 G1 curve equation: y² ≡ x³ + 3 (mod p) ─────────────────────────────
+// All constants are little-endian 32-byte (the format arith256ModDirect expects).
+// align(8) ensures word-aligned CSR inputs.
+
+/// BN254 base field prime p, little-endian.
+const BN254_P_LE: [32]u8 align(8) = .{
+    0x47, 0xfd, 0x7c, 0xd8, 0x16, 0x8c, 0x20, 0x3c,
+    0x8d, 0xca, 0x71, 0x68, 0x91, 0x6a, 0x81, 0x97,
+    0x5d, 0x58, 0x81, 0x81, 0xb6, 0x45, 0x50, 0xb8,
+    0x29, 0xa0, 0x31, 0xe1, 0x72, 0x4e, 0x64, 0x30,
+};
+const BN254_ZERO_LE: [32]u8 align(8) = .{0} ** 32;
+const BN254_THREE_LE: [32]u8 align(8) = .{3} ++ .{0} ** 31;
+
 fn scalarToLimbs(scalar_be: *const [32]u8) [4]u64 {
     var limbs: [4]u64 = undefined;
     for (0..4) |i| {
@@ -31,8 +45,30 @@ fn pointsEqual(p1: *const [64]u8, p2: *const [64]u8) bool {
     return std.mem.eql(u8, p1, p2);
 }
 
+/// Check that an LE-encoded G1 point (x(32) || y(32)) satisfies y² ≡ x³ + 3 (mod p).
+/// (0, 0) — point at infinity — is accepted by EIP-196 convention.
+/// Without this guard the CSR happily computes on garbage inputs, so off-curve
+/// points sneak past `bn254_g1_add` / `bn254_g1_mul` and produce non-spec results.
+fn isOnCurveLE(point_le: *const [64]u8) bool {
+    if (isInfinity(point_le)) return true;
+    const x: *const [32]u8 = point_le[0..32];
+    const y: *const [32]u8 = point_le[32..64];
+    var x_sq: [32]u8 align(8) = undefined;
+    var rhs: [32]u8 align(8) = undefined;
+    var lhs: [32]u8 align(8) = undefined;
+    // x² mod p
+    zisk.arith256ModDirect(x, x, &BN254_ZERO_LE, &BN254_P_LE, &x_sq);
+    // x² · x + 3 mod p
+    zisk.arith256ModDirect(&x_sq, x, &BN254_THREE_LE, &BN254_P_LE, &rhs);
+    // y² mod p
+    zisk.arith256ModDirect(y, y, &BN254_ZERO_LE, &BN254_P_LE, &lhs);
+    return std.mem.eql(u8, &lhs, &rhs);
+}
+
 /// EIP-196 ecAdd: add two BN254 G1 points (big-endian EIP format).
-pub fn ecAdd(p1_be: *const [64]u8, p2_be: *const [64]u8, result_be: *[64]u8) void {
+/// Returns `false` when either input is not on-curve; caller is expected to
+/// surface `Bn254FieldPointNotAMember` in that case.
+pub fn ecAdd(p1_be: *const [64]u8, p2_be: *const [64]u8, result_be: *[64]u8) bool {
     var p1: [64]u8 align(8) = undefined;
     var p2: [64]u8 align(8) = undefined;
 
@@ -42,6 +78,8 @@ pub fn ecAdd(p1_be: *const [64]u8, p2_be: *const [64]u8, result_be: *[64]u8) voi
         std.mem.writeInt(u64, p2[i * 8 ..][0..8], scalarToLimbs(p2_be[0..32])[i], .little);
         std.mem.writeInt(u64, p2[32 + i * 8 ..][0..8], scalarToLimbs(p2_be[32..64])[i], .little);
     }
+
+    if (!isOnCurveLE(&p1) or !isOnCurveLE(&p2)) return false;
 
     if (isInfinity(&p1)) {
         @memcpy(&p1, &p2);
@@ -71,10 +109,13 @@ pub fn ecAdd(p1_be: *const [64]u8, p2_be: *const [64]u8, result_be: *[64]u8) voi
     }
     limbsToCoordinate(rx, result_be[0..32]);
     limbsToCoordinate(ry, result_be[32..64]);
+    return true;
 }
 
 /// EIP-196 ecMul: scalar multiplication k*P on BN254 (big-endian EIP format).
-pub fn ecMul(point_be: *const [64]u8, scalar_be: *const [32]u8, result_be: *[64]u8) void {
+/// Returns `false` when the input point is not on-curve; caller is expected to
+/// surface `Bn254FieldPointNotAMember` in that case.
+pub fn ecMul(point_be: *const [64]u8, scalar_be: *const [32]u8, result_be: *[64]u8) bool {
     const k = scalarToLimbs(scalar_be);
 
     var point: [64]u8 align(8) = undefined;
@@ -83,14 +124,16 @@ pub fn ecMul(point_be: *const [64]u8, scalar_be: *const [32]u8, result_be: *[64]
         std.mem.writeInt(u64, point[32 + i * 8 ..][0..8], scalarToLimbs(point_be[32..64])[i], .little);
     }
 
+    if (!isOnCurveLE(&point)) return false;
+
     const is_zero = k[0] == 0 and k[1] == 0 and k[2] == 0 and k[3] == 0;
     if (is_zero or isInfinity(&point)) {
         @memset(result_be, 0);
-        return;
+        return true;
     }
     if (k[0] == 1 and k[1] == 0 and k[2] == 0 and k[3] == 0) {
         @memcpy(result_be, point_be);
-        return;
+        return true;
     }
     if (k[0] == 2 and k[1] == 0 and k[2] == 0 and k[3] == 0) {
         zisk.bn254CurveDouble(&point);
@@ -140,6 +183,7 @@ pub fn ecMul(point_be: *const [64]u8, scalar_be: *const [32]u8, result_be: *[64]
     }
     limbsToCoordinate(rx, result_be[0..32]);
     limbsToCoordinate(ry, result_be[32..64]);
+    return true;
 }
 
 /// EIP-197 ecPairing: pairing check for BN254.

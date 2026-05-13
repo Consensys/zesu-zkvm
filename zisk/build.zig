@@ -93,6 +93,19 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("runner", runner_mod);
     exe.root_module.addImport("zkvm_io", zisk_io_mod);
 
+    // Override the accel_impl in zesu-core's accelerators module.  Uses ZisK
+    // hardware CSRs for everything that has a circuit (keccak256, sha256, ecrecover,
+    // secp256r1_verify, modexp, bn254_g1_add, bn254_g1_mul) and pure-Zig for
+    // ripemd160 and blake2f (no CSRs exist).  Delegates to libziskos.a only for
+    // bn254_pairing, kzg_point_eval, BLS12-381, and secp256k1_verify.
+    const zisk_accel_impl_mod = b.createModule(.{
+        .root_source_file = b.path("src/runtime/zisk_accel_impl.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    zisk_accel_impl_mod.addImport("zisk", zisk_mod);
+    zesu_core_dep.module("accelerators").addImport("accel_impl", zisk_accel_impl_mod);
+
     b.installArtifact(exe);
 
     // Run via ziskemu emulator
