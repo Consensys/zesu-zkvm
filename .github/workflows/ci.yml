@@ -21,18 +21,18 @@ jobs:
       #   $GITHUB_WORKSPACE/zesu        ← satisfies ../../zesu/core
       #   $GITHUB_WORKSPACE/zisk        ← satisfies ZISK_DIR default (../../zisk)
       - name: Checkout zesu-zkvm
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: zesu-zkvm
 
       - name: Checkout zesu
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ github.repository_owner }}/zesu
           path: zesu
 
       - name: Checkout zisk
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: 0xPolygonHermez/zisk
           ref: v${{ env.ZISK_VERSION }}
@@ -62,7 +62,7 @@ jobs:
 
       - name: Cache Zisk Rust toolchain
         id: cache-zisk-toolchain
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.rustup/toolchains/zisk
           key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Cache libziskos.a
         id: cache-libziskos
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: zesu-zkvm/zisk/lib/libziskos.a
           key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
@@ -105,18 +105,18 @@ jobs:
 
     steps:
       - name: Checkout zesu-zkvm
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: zesu-zkvm
 
       - name: Checkout zesu
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ github.repository_owner }}/zesu
           path: zesu
 
       - name: Checkout zisk
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: 0xPolygonHermez/zisk
           ref: v${{ env.ZISK_VERSION }}
@@ -146,7 +146,7 @@ jobs:
 
       - name: Cache Zisk Rust toolchain
         id: cache-zisk-toolchain
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.rustup/toolchains/zisk
           key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
@@ -157,7 +157,7 @@ jobs:
 
       - name: Cache libziskos.a
         id: cache-libziskos
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: zesu-zkvm/zisk/lib/libziskos.a
           key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
