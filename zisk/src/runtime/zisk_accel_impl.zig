@@ -389,13 +389,11 @@ pub fn modexp(base: []const u8, exp: []const u8, modulus: []const u8, output: []
 // ── BN254 G1 add/mul — bn254CurveAdd/Double CSRs via eip196.zig ───────────────
 
 pub fn bn254_g1_add(p1: *const [64]u8, p2: *const [64]u8, result: *[64]u8) bool {
-    eip196.ecAdd(p1, p2, result);
-    return true;
+    return eip196.ecAdd(p1, p2, result);
 }
 
 pub fn bn254_g1_mul(point: *const [64]u8, scalar: *const [32]u8, result: *[64]u8) bool {
-    eip196.ecMul(point, scalar, result);
-    return true;
+    return eip196.ecMul(point, scalar, result);
 }
 
 // ── BN254 pairing — delegated to libziskos.a ──────────────────────────────────
