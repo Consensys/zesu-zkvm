@@ -217,7 +217,14 @@ fn doRecover(msg_hash: [32]u8, sig: [64]u8, recid: u8) ?[64]u8 {
     const mh_le: Fe align(8) = beToLe(&msg_hash);
     zisk.arith256ModDirect(&mh_le, &ONE, &ZERO, &N_LE, &z_le);
 
+    // ECDSA signature validity: r, s ∈ [1, n−1].
+    // The lower bound (r,s ≠ 0) is necessary because r⁻¹ mod n is undefined for 0.
+    // The upper bound (r,s < n) is needed to reject inputs like `s = N` — the modular
+    // math otherwise silently treats them as zero, derives a junk pubkey, and produces
+    // results that diverge from libsecp256k1 (which rejects per FIPS 186-4 / SEC 1).
     if (feIsZero(&r_le) or feIsZero(&s_le)) return null;
+    if (!feNumericLessThan(&r_le, &N_LE)) return null;
+    if (!feNumericLessThan(&s_le, &N_LE)) return null;
 
     // rx: x-coordinate of R (r or r+N for recid bit 1)
     var rx: Fe align(8) = r_le;
