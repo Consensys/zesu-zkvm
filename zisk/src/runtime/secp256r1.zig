@@ -56,6 +56,16 @@ const N_MINUS_2_BE: [32]u8 = .{
 
 const ZERO: Fe align(8) = .{0} ** 32;
 const ONE: Fe align(8) = .{1} ++ (.{0} ** 31);
+const THREE: Fe align(8) = .{3} ++ (.{0} ** 31);
+
+/// P-256 curve coefficient b (little-endian).
+/// y² ≡ x³ − 3x + b (mod p)
+const B_LE: Fe align(8) = .{
+    0x4B, 0x60, 0xD2, 0x27, 0x3E, 0x3C, 0xCE, 0x3B,
+    0xF6, 0xB0, 0x53, 0xCC, 0xB0, 0x06, 0x1D, 0x65,
+    0xBC, 0x86, 0x98, 0x76, 0x55, 0xBD, 0xEB, 0xB3,
+    0xE7, 0x93, 0x3A, 0xAA, 0xD8, 0x35, 0xC6, 0x5A,
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -178,6 +188,29 @@ fn scalarMul(k: *const Fe, p: Point) ?Point {
 
 // ── ECDSA verify ───────────────────────────────────────────────────────────────
 
+/// Validate that the public-key bytes form a non-infinity, in-field, on-curve
+/// P-256 point. Per EIP-7951 / FIPS 186-4, any pubkey failing these checks
+/// must cause the signature verification to return 0.
+/// Without this guard, off-curve / out-of-field bytes are accepted by the
+/// CSR's point arithmetic and produce non-spec verification outcomes.
+fn pubkeyValid(qx: *const Fe, qy: *const Fe) bool {
+    // Reject the point at infinity.
+    if (feIsZero(qx) and feIsZero(qy)) return false;
+    // Field membership: qx, qy < p.
+    if (!feNumericLessThan(qx, &P_LE)) return false;
+    if (!feNumericLessThan(qy, &P_LE)) return false;
+    // On-curve: (y² + 3x) ≡ (x³ + b) mod p
+    var lhs: Fe align(8) = undefined;
+    var lhs_plus_3x: Fe align(8) = undefined;
+    var x_sq: Fe align(8) = undefined;
+    var rhs: Fe align(8) = undefined;
+    zisk.arith256ModDirect(qy, qy, &ZERO, &P_LE, &lhs);
+    zisk.arith256ModDirect(&THREE, qx, &lhs, &P_LE, &lhs_plus_3x);
+    zisk.arith256ModDirect(qx, qx, &ZERO, &P_LE, &x_sq);
+    zisk.arith256ModDirect(&x_sq, qx, &B_LE, &P_LE, &rhs);
+    return std.mem.eql(u8, &lhs_plus_3x, &rhs);
+}
+
 fn doVerify(
     hash_be: *const [32]u8,
     r_be: *const [32]u8,
@@ -191,6 +224,10 @@ fn doVerify(
     if (feIsZero(&r_le) or !feNumericLessThan(&r_le, &N_LE)) return false;
     if (feIsZero(&s_le) or !feNumericLessThan(&s_le, &N_LE)) return false;
 
+    const qx_le: Fe align(8) = beToLe(qx_be);
+    const qy_le: Fe align(8) = beToLe(qy_be);
+    if (!pubkeyValid(&qx_le, &qy_le)) return false;
+
     var hash_le: Fe align(8) = beToLe(hash_be);
     // Reduce hash mod n
     var z_le: Fe align(8) = feMul(&hash_le, &ONE, &N_LE);
@@ -200,7 +237,7 @@ fn doVerify(
     var k2: Fe align(8) = feMul(&r_le, &w, &N_LE);
 
     const G = Point{ .x = GX_LE, .y = GY_LE };
-    const Q = Point{ .x = beToLe(qx_be), .y = beToLe(qy_be) };
+    const Q = Point{ .x = qx_le, .y = qy_le };
 
     const R = optAdd(scalarMul(&k1, G), scalarMul(&k2, Q)) orelse return false;
 
