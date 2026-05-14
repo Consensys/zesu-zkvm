@@ -99,6 +99,13 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
     const payload_len_ptr: *align(1) const u64 = @ptrCast(&input_buf[0]);
     const payload_len = std.mem.littleToNative(u64, payload_len_ptr.*);
 
+    // Validate that the header-advertised payload fits within the bytes we
+    // actually read.  total_len includes the 8-byte header itself, so the
+    // payload must be <= total_len - 8.
+    if (total_len < 8 or payload_len > total_len - 8) {
+        @panic("file header payload_len exceeds total_len");
+    }
+
     buf_ptr.* = @ptrCast(&input_buf[8]);
     buf_size.* = @intCast(payload_len);
 }

@@ -108,8 +108,12 @@ fn verifyInner(msg: *const [32]u8, sig: *const [64]u8, pubkey: *const [64]u8) !b
     try R.rejectIdentity();
 
     const affine = R.affineCoordinates();
-    // Compare R.x mod n to r.
-    const rx = try scalar.Scalar.fromBytes(affine.x.toBytes(.big), .big);
+    // R.x lives in F_p; p > n for secp256k1, so R.x may be >= n.
+    // Reduce mod n via fromBytes64 wide reduction instead of fromBytes, which
+    // rejects non-canonical (>= n) values and would falsely return false.
+    var rx_wide: [64]u8 = .{0} ** 64;
+    @memcpy(rx_wide[32..64], &affine.x.toBytes(.big));
+    const rx = scalar.Scalar.fromBytes64(rx_wide, .big);
     return rx.equivalent(r_scalar);
 }
 
