@@ -1,0 +1,16 @@
+[package]
+name = "zesu-openvm-runner"
+version = "0.1.0"
+edition = "2021"
+description = "Host runner for the zesu-openvm zkVM guest"
+
+[[bin]]
+name = "zesu-openvm-runner"
+path = "src/main.rs"
+
+[dependencies]
+openvm-sdk        = { path = "../../../openvm/crates/sdk" }
+openvm-sdk-config = { path = "../../../openvm/crates/sdk-config" }
+eyre              = "0.6"
+toml              = "0.8"
+

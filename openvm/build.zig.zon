@@ -1,0 +1,12 @@
+.{
+    .name = .zesu_openvm,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.1",
+    .fingerprint = 0xbc60f2db0b3de42c,
+    .dependencies = .{
+        .zesu_core = .{
+            .path = "../../zesu/core",
+        },
+    },
+    .paths = .{"."},
+}
