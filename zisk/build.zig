@@ -70,6 +70,18 @@ pub fn build(b: *std.Build) void {
     const runner_mod = zesu_core_dep.module("runner");
     runner_mod.addImport("zkvm_io", zisk_io_mod);
 
+    // ── Input format override ─────────────────────────────────────────────────
+    // -Dinput_format=ere: strip the 4-byte u32 LE prefix added by Ere's
+    // Input::with_prefixed_stdin before passing bytes to the SSZ decoder.
+    const input_format = b.option(
+        []const u8,
+        "input_format",
+        "Input decoder: 'ssz' (default) or 'ere'",
+    ) orelse "ssz";
+    if (std.mem.eql(u8, input_format, "ere")) {
+        runner_mod.addImport("ssz_decode", zesu_core_dep.module("ere_decode"));
+    }
+
     // ── Guest executable ──────────────────────────────────────────────────────
     // src/main.zig: ZisK harness only — UART, ZiskAllocator, zkExit, panic,
     // sys_read. Calls runner.runStateless() for all execution logic.
