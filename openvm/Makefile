@@ -32,9 +32,7 @@ $(RUNNER):
 	cd runner && $(CARGO) build --release
 
 run: all
-ifndef INPUT
-	$(error INPUT is required: make run INPUT=path/to/block.bin)
-endif
+	@test -n "$(INPUT)" || { echo "ERROR: INPUT is required: make run INPUT=path/to/block.bin" >&2; exit 1; }
 	$(RUNNER) -e $(ELF) -i $(INPUT)
 
 test: runner
