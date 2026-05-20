@@ -7,6 +7,7 @@
 	.type   _start, @function
 _start:
 	li   sp, 0x00200400
+	call openvm_init_heap
 	call main
 	unimp
 	.size _start, . - _start

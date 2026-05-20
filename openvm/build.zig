@@ -13,49 +13,16 @@ pub fn build(b: *std.Build) void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    // ── zesu-core: pure EVM module definitions ────────────────────────────────
+    // ── zesu-core dependency ──────────────────────────────────────────────────
+    // When built with a freestanding target, core/build.zig:
+    //   - Overrides zesu_allocator → bump_alloc.zig (ZISK_BUMP_HEAP_POS/TOP)
+    //   - Overrides accel_impl → extern_bridge.zig (extern fn zkvm_* refs)
+    //   - Injects extern_io.zig as zkvm_io into runner
+    //   - Exposes "zkvm_root" named module (src/zkvm/root.zig) with all wired deps
     const zesu_core_dep = b.dependency("zesu_core", .{
         .target = target,
         .optimize = optimize,
     });
-
-    // ── OpenVM runtime module ─────────────────────────────────────────────────
-    // Provides: OpenVmAllocator (bump allocator using _end symbol)
-    const openvm_mod = b.addModule("openvm", .{
-        .root_source_file = b.path("src/runtime/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // ── Override zesu_allocator: OpenVM bump allocator ────────────────────────
-    const openvm_alloc_mod = b.addModule("zesu_allocator", .{
-        .root_source_file = b.path("src/runtime/zesu_allocator.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    openvm_alloc_mod.addImport("openvm", openvm_mod);
-
-    // ── Override accel_impl: pure-Zig stubs (no extern zkvm_* symbols needed) ──
-    const nolibs_accel_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/stdlibs_accel.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    zesu_core_dep.module("accelerators").addImport("accel_impl", nolibs_accel_mod);
-
-    for ([_]*std.Build.Module{
-        zesu_core_dep.module("bytecode"),
-        zesu_core_dep.module("state"),
-        zesu_core_dep.module("context"),
-        zesu_core_dep.module("interpreter"),
-        zesu_core_dep.module("precompile"),
-        zesu_core_dep.module("handler"),
-    }) |evm_mod| {
-        evm_mod.addImport("zesu_allocator", openvm_alloc_mod);
-    }
-
-    zesu_core_dep.module("executor").addImport("zesu_allocator", openvm_alloc_mod);
-    zesu_core_dep.module("executor").addImport("interpreter", zesu_core_dep.module("interpreter"));
 
     // ── OpenVM zkvm_io: hint-stream I/O ───────────────────────────────────────
     const openvm_io_mod = b.createModule(.{
@@ -64,28 +31,60 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // runner: zesu's SSZ execution entry point.
-    const runner_mod = zesu_core_dep.module("runner");
-    runner_mod.addImport("zkvm_io", openvm_io_mod);
+    // ── accel_impl: pure-Zig implementations (std.crypto + stubs) ────────────
+    const accel_impl_mod = b.createModule(.{
+        .root_source_file = b.path("src/runtime/stdlibs_accel.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // ── zesu rv64im object ────────────────────────────────────────────────────
+    // Uses core's "zkvm_root" module (already wired with extern_bridge, bump_alloc,
+    // extern_io). Produces an object with main() and all EVM/stateless logic,
+    // leaving IO / crypto / heap / runtime as unresolved extern refs.
+    const zesu_obj = b.addObject(.{
+        .name = "zesu",
+        .root_module = zesu_core_dep.module("zkvm_root"),
+    });
+    zesu_obj.root_module.code_model = .medium;
+
+    // ── OpenVM host object ────────────────────────────────────────────────────
+    // Satisfies all extern refs from zesu.o:
+    //   - 19 zkvm_* accelerators (pure-Zig / std.crypto stubs)
+    //   - read_input / write_output (hint-stream IO)
+    //   - zkvm_log / zkvm_exit (print_str phantom / TERMINATE)
+    //   - ZISK_BUMP_HEAP_POS / ZISK_BUMP_HEAP_TOP (bump heap vars + init fn)
+    const host_mod = b.createModule(.{
+        .root_source_file = b.path("src/openvm_host.zig"),
+        .target = target,
+        .optimize = optimize,
+        .code_model = .medium,
+    });
+    host_mod.addImport("accel_impl", accel_impl_mod);
+    host_mod.addImport("zkvm_io", openvm_io_mod);
+    const host_obj = b.addObject(.{
+        .name = "openvm-host",
+        .root_module = host_mod,
+    });
 
     // ── Guest executable ──────────────────────────────────────────────────────
+    // zesu.o (main + EVM logic) + openvm-host.o (host + accelerators).
+    // startup.S provides _start → openvm_init_heap → main.
+    // No partial link needed: no external archive with duplicate symbols.
     const exe = b.addExecutable(.{
         .name = "zesu-openvm",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = null,
             .target = target,
             .optimize = optimize,
         }),
     });
-
     exe.entry = .{ .symbol_name = "_start" };
-    exe.setLinkerScript(b.path("openvm.ld"));
-    exe.root_module.addAssemblyFile(b.path("src/startup.S"));
     exe.root_module.code_model = .medium;
-
-    exe.root_module.addImport("openvm", openvm_mod);
-    exe.root_module.addImport("runner", runner_mod);
-    exe.root_module.addImport("zkvm_io", openvm_io_mod);
+    exe.root_module.addObject(zesu_obj);
+    exe.root_module.addObject(host_obj);
+    exe.root_module.addAssemblyFile(b.path("src/startup.S"));
+    exe.setLinkerScript(b.path("openvm.ld"));
 
     b.installArtifact(exe);
 
