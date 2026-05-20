@@ -52,6 +52,10 @@ pub fn build(b: *std.Build) void {
 
     // zesu_allocator: override for executor internals (system_calls, transition) in freestanding.
     zesu_core_dep.module("executor").addImport("zesu_allocator", zisk_alloc_mod);
+    // bal-devnet-7: stateless/executor/system_calls.zig now references
+    // interpreter.gas_costs for SYSTEM_CALL_GAS_LIMIT (EIP-8037). Wire the
+    // dependency through the executor module so the freestanding build resolves it.
+    zesu_core_dep.module("executor").addImport("interpreter", zesu_core_dep.module("interpreter"));
 
     // ── ZisK zkvm_io: memory-mapped I/O per zkvm-standards ───────────────────
     const zisk_io_mod = b.createModule(.{
