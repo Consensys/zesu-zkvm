@@ -23,17 +23,14 @@ var len_buf: u64 align(8) = 0;
 
 /// Advance the hint stream to the next input vector (phantom instruction).
 inline fn hintInput() void {
-    asm volatile (".insn i 0x0b, 3, x0, x0, 0"
-        :
-        :
-        : .{ .memory = true });
+    asm volatile (".insn i 0x0b, 3, x0, x0, 0" ::: .{ .memory = true });
 }
 
 /// Read 8 bytes from the hint stream into *ptr.
 inline fn hintStoreU64(ptr: *u64) void {
     asm volatile (".insn i 0x0b, 1, %[rd], x0, 0"
         :
-        : [rd] "r" (@intFromPtr(ptr))
+        : [rd] "r" (@intFromPtr(ptr)),
         : .{ .memory = true });
 }
 
@@ -47,7 +44,8 @@ fn hintBufferChunked(buf: [*]u8, num_dwords: usize) void {
         const chunk = if (remaining > MAX_CHUNK) MAX_CHUNK else remaining;
         asm volatile (".insn i 0x0b, 1, %[rd], %[rs1], 1"
             :
-            : [rd] "r" (@intFromPtr(ptr)), [rs1] "r" (chunk)
+            : [rd] "r" (@intFromPtr(ptr)),
+              [rs1] "r" (chunk),
             : .{ .memory = true });
         ptr = ptr + chunk * 8;
         remaining -= chunk;
@@ -61,7 +59,8 @@ pub fn printStr(s: []const u8) void {
     if (s.len == 0) return;
     asm volatile (".insn i 0x0b, 3, %[rd], %[rs1], 1"
         :
-        : [rd] "r" (@intFromPtr(s.ptr)), [rs1] "r" (s.len)
+        : [rd] "r" (@intFromPtr(s.ptr)),
+          [rs1] "r" (s.len),
         : .{ .memory = true });
 }
 
@@ -128,7 +127,8 @@ pub fn write_output(output: []const u8) void {
         // REVEAL: writes chunk to PUBLIC_VALUES[byte_offset .. byte_offset+8]
         asm volatile (".insn i 0x0b, 2, %[rd], %[rs1], 0"
             :
-            : [rd] "r" (byte_offset), [rs1] "r" (chunk)
+            : [rd] "r" (byte_offset),
+              [rs1] "r" (chunk),
             : .{ .memory = true });
         i += 8;
     }

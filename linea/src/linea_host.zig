@@ -50,8 +50,7 @@ export fn zkvm_exit(code: i32) noreturn {
         :
         : [code] "{a0}" (code),
           [syscall] "{a7}" (@as(u32, 93)),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
     while (true) {
         asm volatile ("wfi");
     }

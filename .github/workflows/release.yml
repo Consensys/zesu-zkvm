@@ -10,6 +10,7 @@ name: Release
 # Targets:
 #   zisk    — ZisK v0.17.0; links zesu.o + zisk-wrapped.o (host + libziskos merged)
 #   openvm  — OpenVM rv64im; links zesu.o + openvm-host.o; 8-byte u64 LE input header
+#   linea   — Linea zkVM rv64im; links zesu.o + linea-host.o; stripped ELF; Linux ecalls
 
 on:
   push:
@@ -111,7 +112,7 @@ jobs:
           cp zesu-zkvm/zisk/zig-out/bin/zesu-zisk output/stateless-validator-zesu-zisk.elf
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stateless-validator-zesu-zisk
           path: output/stateless-validator-zesu-zisk.elf
@@ -149,29 +150,72 @@ jobs:
           cp zesu-zkvm/openvm/zig-out/bin/zesu-openvm output/stateless-validator-zesu-openvm.elf
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stateless-validator-zesu-openvm
           path: output/stateless-validator-zesu-openvm.elf
           if-no-files-found: error
 
+  compile-linea:
+    name: Compile stateless-validator-zesu-linea
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: zesu-zkvm
+
+      - name: Checkout zesu
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ github.repository_owner }}/zesu
+          path: zesu
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: "0.16.0"
+
+      - name: Build Zesu Linea ELF
+        working-directory: zesu-zkvm/linea
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Stage artifact
+        run: |
+          mkdir -p output
+          cp zesu-zkvm/linea/zig-out/bin/zesu-linea output/stateless-validator-zesu-linea.elf
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stateless-validator-zesu-linea
+          path: output/stateless-validator-zesu-linea.elf
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [compile-zisk, compile-openvm]
+    needs: [compile-zisk, compile-openvm, compile-linea]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     steps:
       - name: Download ZisK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: stateless-validator-zesu-zisk
           path: artifacts
 
       - name: Download OpenVM artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: stateless-validator-zesu-openvm
+          path: artifacts
+
+      - name: Download Linea artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: stateless-validator-zesu-linea
           path: artifacts
 
       - name: Create or update GitHub Release
@@ -189,4 +233,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             artifacts/stateless-validator-zesu-zisk.elf \
             artifacts/stateless-validator-zesu-openvm.elf \
+            artifacts/stateless-validator-zesu-linea.elf \
             --clobber

@@ -47,10 +47,7 @@ fn guestMain() !void {
 
 /// Terminate via OpenVM's TERMINATE custom instruction (funct3=0, imm=exit_code).
 fn zkExit(comptime exit_code: u8) noreturn {
-    asm volatile (".insn i 0x0b, 0, x0, x0, " ++ std.fmt.comptimePrint("{d}", .{exit_code})
-        :
-        :
-        : .{ .memory = true });
+    asm volatile (".insn i 0x0b, 0, x0, x0, " ++ std.fmt.comptimePrint("{d}", .{exit_code}) ::: .{ .memory = true });
     unreachable;
 }
 

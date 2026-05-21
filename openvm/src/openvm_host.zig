@@ -47,15 +47,9 @@ export fn zkvm_log(level: u8, msg_ptr: [*]const u8, msg_len: usize) void {
 /// branch on the two expected values: 0 (success) and 1 (failure).
 export fn zkvm_exit(code: i32) noreturn {
     if (code == 0) {
-        asm volatile (".insn i 0x0b, 0, x0, x0, 0"
-            :
-            :
-            : .{ .memory = true });
+        asm volatile (".insn i 0x0b, 0, x0, x0, 0" ::: .{ .memory = true });
     } else {
-        asm volatile (".insn i 0x0b, 0, x0, x0, 1"
-            :
-            :
-            : .{ .memory = true });
+        asm volatile (".insn i 0x0b, 0, x0, x0, 1" ::: .{ .memory = true });
     }
     unreachable;
 }

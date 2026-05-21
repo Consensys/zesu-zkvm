@@ -83,21 +83,37 @@ jobs:
         working-directory: zesu-zkvm/zisk
         run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
-      - name: Lint
+      - name: Lint (zisk)
         working-directory: zesu-zkvm/zisk
         run: zig fmt --check src/ build.zig
 
-      - name: Build (Debug)
+      - name: Build zisk (Debug)
         working-directory: zesu-zkvm/zisk
         run: zig build
 
-      - name: Build (ReleaseFast)
+      - name: Build zisk (ReleaseFast)
         working-directory: zesu-zkvm/zisk
         run: zig build -Doptimize=ReleaseFast
 
-      - name: Test
+      - name: Test (zisk)
         working-directory: zesu-zkvm/zisk
         run: zig build test --summary all
+
+      - name: Lint (openvm)
+        working-directory: zesu-zkvm/openvm
+        run: zig fmt --check src/ build.zig
+
+      - name: Build openvm (ReleaseFast)
+        working-directory: zesu-zkvm/openvm
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Lint (linea)
+        working-directory: zesu-zkvm/linea
+        run: zig fmt --check src/ build.zig
+
+      - name: Build linea (ReleaseFast)
+        working-directory: zesu-zkvm/linea
+        run: zig build -Doptimize=ReleaseFast
 
   vectors:
     name: Vectors

@@ -24,13 +24,12 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
 /// Write bytes via the Linux write ecall (a7=64, fd=1).
 fn writeEcall(ptr: [*]const u8, len: usize) void {
     _ = asm volatile ("ecall"
-        : [ret] "={a0}" (-> usize)
+        : [ret] "={a0}" (-> usize),
         : [fd] "{a0}" (@as(usize, 1)),
           [buf] "{a1}" (@intFromPtr(ptr)),
           [count] "{a2}" (len),
           [syscall] "{a7}" (@as(usize, 64)),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
 }
 
 /// Write public output bytes (SSZ commitment) to stdout.

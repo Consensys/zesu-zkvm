@@ -63,8 +63,10 @@ pub fn ecrecover(msg: *const [32]u8, sig: *const [64]u8, recid: u8, output: *[64
     const r_inv_neg_e = scalar.mul(r_inv_bytes, neg_e_bytes, .big) catch return false;
 
     const pub_point = Secp256k1.mulDoubleBasePublic(
-        R, r_inv_s,
-        Secp256k1.basePoint, r_inv_neg_e,
+        R,
+        r_inv_s,
+        Secp256k1.basePoint,
+        r_inv_neg_e,
         .big,
     ) catch return false;
     pub_point.rejectIdentity() catch return false;
@@ -125,18 +127,24 @@ pub fn ripemd160(data: []const u8, output: *[32]u8) void {
 }
 
 pub fn modexp(base: []const u8, exp: []const u8, modulus: []const u8, output: []u8) bool {
-    _ = base; _ = exp; _ = modulus;
+    _ = base;
+    _ = exp;
+    _ = modulus;
     @memset(output, 0);
     return false;
 }
 
 pub fn bn254_g1_add(p1: *const [64]u8, p2: *const [64]u8, result: *[64]u8) bool {
-    _ = p1; _ = p2; _ = result;
+    _ = p1;
+    _ = p2;
+    _ = result;
     return false;
 }
 
 pub fn bn254_g1_mul(point: *const [64]u8, scalar_: *const [32]u8, result: *[64]u8) bool {
-    _ = point; _ = scalar_; _ = result;
+    _ = point;
+    _ = scalar_;
+    _ = result;
     return false;
 }
 
@@ -147,7 +155,11 @@ pub fn bn254_pairing(pairs: anytype, verified: *bool) bool {
 }
 
 pub fn blake2f(rounds: u32, h: *[64]u8, m: *const [128]u8, t: *const [16]u8, f: u8) bool {
-    _ = rounds; _ = h; _ = m; _ = t; _ = f;
+    _ = rounds;
+    _ = h;
+    _ = m;
+    _ = t;
+    _ = f;
     return false;
 }
 
@@ -156,28 +168,37 @@ pub fn blake2f(rounds: u32, h: *[64]u8, m: *const [128]u8, t: *const [16]u8, f: 
 /// mode (no ZK proof generation), accept the proof without recomputing the
 /// pairing — the hash-of-commitment check in kzgPointEvalRun still runs.
 pub fn kzg_point_eval(commitment: *const [48]u8, z: *const [32]u8, y: *const [32]u8, proof: *const [48]u8, verified: *bool) bool {
-    _ = commitment; _ = z; _ = y; _ = proof;
+    _ = commitment;
+    _ = z;
+    _ = y;
+    _ = proof;
     verified.* = true;
     return true;
 }
 
 pub fn bls12_g1_add(p1: *const [96]u8, p2: *const [96]u8, result: *[96]u8) bool {
-    _ = p1; _ = p2; _ = result;
+    _ = p1;
+    _ = p2;
+    _ = result;
     return false;
 }
 
 pub fn bls12_g1_msm(pairs: anytype, result: *[96]u8) bool {
-    _ = pairs; _ = result;
+    _ = pairs;
+    _ = result;
     return false;
 }
 
 pub fn bls12_g2_add(p1: *const [192]u8, p2: *const [192]u8, result: *[192]u8) bool {
-    _ = p1; _ = p2; _ = result;
+    _ = p1;
+    _ = p2;
+    _ = result;
     return false;
 }
 
 pub fn bls12_g2_msm(pairs: anytype, result: *[192]u8) bool {
-    _ = pairs; _ = result;
+    _ = pairs;
+    _ = result;
     return false;
 }
 
@@ -188,16 +209,20 @@ pub fn bls12_pairing(pairs: anytype, verified: *bool) bool {
 }
 
 pub fn bls12_map_fp_to_g1(field_element: *const [48]u8, result: *[96]u8) bool {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return false;
 }
 
 pub fn bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u8) bool {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return false;
 }
 
 pub fn secp256r1_verify(msg: *const [32]u8, sig: *const [64]u8, pubkey: *const [64]u8, verified: *bool) void {
-    _ = msg; _ = sig; _ = pubkey;
+    _ = msg;
+    _ = sig;
+    _ = pubkey;
     verified.* = false;
 }
