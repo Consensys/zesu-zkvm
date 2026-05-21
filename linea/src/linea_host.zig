@@ -1,14 +1,14 @@
-/// OpenVM host object: satisfies all extern symbol references in zesu.rv64im.o
+/// Linea host object: satisfies all extern symbol references in zesu.rv64im.o
 ///
 /// Exports:
 ///   read_input / write_output          — zkvm-standards io-interface
 ///   zkvm_keccak256 ... zkvm_secp256r1_verify — all 19 accelerators
 ///   zkvm_log / zkvm_exit               — runtime
 ///   ZKVM_HEAP_POS / ZKVM_HEAP_TOP — heap region vars
-///   openvm_init_heap                   — called by startup.S before main()
+///   linea_init_heap                    — called by startup.S before main()
 ///
-/// Accelerator implementations delegate to stdlibs_accel.zig (accel_impl import):
-///   keccak256, sha256, ecrecover, secp256k1_verify — functional (std.crypto)
+/// Accelerators delegate to stdlibs_accel.zig (pure-Zig / std.crypto):
+///   keccak256, sha256, ecrecover, secp256k1_verify — functional
 ///   ripemd160, modexp, bn254_*, blake2f — stubs (return failure)
 ///   kzg_point_eval                     — returns verified=true (mainnet only)
 ///   bls12_*, secp256r1_verify           — stubs (return failure)
@@ -16,22 +16,22 @@ const std = @import("std");
 const accel = @import("accel_impl");
 const io = @import("zkvm_io");
 
-/// OpenVM guest memory upper bound (512 MB, matches openvm-platform MEM_SIZE).
-const GUEST_MAX_MEM: usize = 0x20000000;
-
-/// Linker-defined symbol marking the end of all ELF sections (heap start).
+/// Linker-defined heap start (end of BSS section).
 extern var _end: u8;
 
+/// Heap upper bound: bottom of STACK region (0x08000000).
+const HEAP_TOP: usize = 0x08000000;
+
 // ── Bump heap vars ────────────────────────────────────────────────────────────
-// bump_alloc.zig in zesu.o reads/writes these. They are initialized by
-// openvm_init_heap() (called from startup.S before main()).
+// bump_alloc.zig in zesu.o reads/writes these. Initialized by linea_init_heap()
+// (called from startup.S before main()).
 
 export var ZKVM_HEAP_POS: usize = 0;
 export var ZKVM_HEAP_TOP: usize = 0;
 
-export fn openvm_init_heap() void {
+export fn linea_init_heap() void {
     ZKVM_HEAP_POS = @intFromPtr(&_end);
-    ZKVM_HEAP_TOP = GUEST_MAX_MEM;
+    ZKVM_HEAP_TOP = HEAP_TOP;
 }
 
 // ── Runtime ───────────────────────────────────────────────────────────────────
@@ -42,22 +42,19 @@ export fn zkvm_log(level: u8, msg_ptr: [*]const u8, msg_len: usize) void {
     io.printStr("\n");
 }
 
-/// Halt via OpenVM's TERMINATE instruction (opcode 0x0b, funct3=0, imm=exit_code).
-/// The immediate is part of the instruction encoding and must be comptime, so we
-/// branch on the two expected values: 0 (success) and 1 (failure).
+/// Halt via Linux exit ecall (a7=93). Identical to zisk_host.zig.
 export fn zkvm_exit(code: i32) noreturn {
-    if (code == 0) {
-        asm volatile (".insn i 0x0b, 0, x0, x0, 0"
-            :
-            :
-            : .{ .memory = true });
-    } else {
-        asm volatile (".insn i 0x0b, 0, x0, x0, 1"
-            :
-            :
-            : .{ .memory = true });
+    asm volatile (
+        \\ ecall
+        \\ .align 4
+        :
+        : [code] "{a0}" (code),
+          [syscall] "{a7}" (@as(u32, 93)),
+        : .{ .memory = true }
+    );
+    while (true) {
+        asm volatile ("wfi");
     }
-    unreachable;
 }
 
 // ── IO — zkvm-standards io-interface ─────────────────────────────────────────

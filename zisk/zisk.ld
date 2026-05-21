@@ -74,6 +74,11 @@ SECTIONS
     PROVIDE(_kernel_heap_top = ORIGIN(RAM) + LENGTH(RAM));
     PROVIDE(_kernel_heap_size = _kernel_heap_top - _kernel_heap_bottom);
 
+    /* Agnostic heap symbols used by zesu.o bump_alloc.zig; aliased onto
+     * libziskos.a's own heap vars so both names reference the same memory. */
+    ZKVM_HEAP_POS = ZISK_BUMP_HEAP_POS;
+    ZKVM_HEAP_TOP = ZISK_BUMP_HEAP_TOP;
+
     . = ALIGN(8);
     _end = .;
 
