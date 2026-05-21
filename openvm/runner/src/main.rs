@@ -13,8 +13,8 @@ use openvm_sdk::{
 };
 use openvm_sdk_config::SdkVmConfig;
 
-const SSZ_OUTPUT_LEN: usize = 41;
-const NUM_PUBLIC_VALUES: usize = 64;
+const SSZ_OUTPUT_LEN: usize = 105;
+const NUM_PUBLIC_VALUES: usize = 112;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -45,6 +45,7 @@ fn main() -> Result<()> {
     });
 
     // Build VM config: rv64i + rv64m + io, with 64 public value bytes.
+    // NOTE: requires a fork of openvm with rv64 support (SdkVmConfig::riscv64).
     let mut vm_config = SdkVmConfig::riscv64();
     let updated_system = vm_config.as_ref().clone().with_public_values(NUM_PUBLIC_VALUES);
     *vm_config.as_mut() = updated_system;

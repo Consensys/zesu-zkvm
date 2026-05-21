@@ -55,6 +55,7 @@ pub fn build(b: *std.Build) void {
     }
 
     zesu_core_dep.module("executor").addImport("zesu_allocator", openvm_alloc_mod);
+    zesu_core_dep.module("executor").addImport("interpreter", zesu_core_dep.module("interpreter"));
 
     // ── OpenVM zkvm_io: hint-stream I/O ───────────────────────────────────────
     const openvm_io_mod = b.createModule(.{
