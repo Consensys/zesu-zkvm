@@ -83,8 +83,7 @@ pub fn build(b: *std.Build) void {
     // Output is a single relocatable object with every symbol defined exactly once.
     const wrap_cmd = b.addSystemCommand(&.{
         "zig", "ld.lld",
-        "-r",
-        "--allow-multiple-definition",
+        "-r",  "--allow-multiple-definition",
     });
     wrap_cmd.addFileArg(host_obj.getEmittedBin());
     wrap_cmd.addFileArg(b.path("lib/libziskos.a"));
