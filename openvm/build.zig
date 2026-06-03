@@ -25,21 +25,22 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // ── accel_impl: pure-Zig implementations (std.crypto + stubs) ────────────
+    // ── accel_impl: OpenVM native accelerator implementations ─────────────────
+    // keccak256/sha256: native XORIN+KECCAKF / SHA256 compress opcodes
+    // ecrecover/secp256k1_verify: native modular arithmetic + ECC opcodes
+    // ripemd160/modexp/bn254/bls12/blake2f: pure-Zig implementations
     const accel_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/stdlibs_accel.zig"),
+        .root_source_file = b.path("src/runtime/openvm_accel.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    // ── zesu rv64im object ────────────────────────────────────────────────────
-
     // ── OpenVM host object ────────────────────────────────────────────────────
     // Satisfies all extern refs from zesu.o:
-    //   - 19 zkvm_* accelerators (pure-Zig / std.crypto stubs)
+    //   - 19 zkvm_* accelerators (OpenVM native + pure-Zig implementations)
     //   - read_input / write_output (hint-stream IO)
     //   - zkvm_log / zkvm_exit (print_str phantom / TERMINATE)
-    //   - ZISK_BUMP_HEAP_POS / ZISK_BUMP_HEAP_TOP (bump heap vars + init fn)
+    //   - ZKVM_HEAP_POS / ZKVM_HEAP_TOP (bump heap vars + init fn)
     const host_mod = b.createModule(.{
         .root_source_file = b.path("src/openvm_host.zig"),
         .target = target,
