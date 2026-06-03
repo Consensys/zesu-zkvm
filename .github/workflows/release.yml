@@ -45,7 +45,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/zisk
           ref: v${{ env.ZISK_VERSION }}
-          path: zisk
+          path: upstream-zisk
 
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
@@ -90,7 +90,7 @@ jobs:
       - name: Build libziskos.a
         if: steps.cache-libziskos.outputs.cache-hit != 'true'
         working-directory: zisk
-        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
+        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/upstream-zisk
 
       - name: Download zesu object
         run: |

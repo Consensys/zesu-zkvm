@@ -11,11 +11,16 @@ const std = @import("std");
 /// Linker-defined start of the IN memory region (0x08800000).
 extern var _input_start: u8;
 
+/// Size of the IN memory region as declared in linea.ld (1 GiB).
+const IN_REGION_SIZE: usize = 0x40000000;
+
 /// Read the private input data from the memory-mapped IN region.
 pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
     const base = @intFromPtr(&_input_start);
     const size_ptr: *const u64 = @ptrFromInt(base);
     const payload_len = std.mem.littleToNative(u64, size_ptr.*);
+
+    if (payload_len > IN_REGION_SIZE - 8) @panic("input payload_len exceeds IN region");
 
     buf_ptr.* = @ptrFromInt(base + 8);
     buf_size.* = @intCast(payload_len);
