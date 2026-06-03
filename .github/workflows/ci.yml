@@ -100,7 +100,7 @@ jobs:
 
       - name: Test (zisk)
         working-directory: zesu-zkvm/zisk
-        run: zig build test --summary all
+        run: zig build test --summary all -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
 
       - name: Lint (openvm)
         working-directory: zesu-zkvm/openvm
