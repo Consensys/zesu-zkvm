@@ -23,7 +23,6 @@
 ///
 /// Point format: 64 bytes = x(32 LE bytes) || y(32 LE bytes), align(8).
 /// All-zero = point at infinity.
-
 const std = @import("std");
 
 // ── Type alias ────────────────────────────────────────────────────────────────
@@ -132,24 +131,43 @@ fn setupOnce() void {
 
     // SETUP_ADDSUB for mod_idx=4 (P-256 p): funct7 = 4*8+5 = 37, rs2=x0
     asm volatile (".insn r 0x2b, 0, 37, %[rd], %[rs1], x0"
-        : : [rd] "r" (@intFromPtr(&uninit)), [rs1] "r" (p_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&uninit)),
+          [rs1] "r" (p_ptr),
+        : .{ .memory = true });
     // SETUP_MULDIV for mod_idx=4 (P-256 p): funct7=37, rs2=x1
     asm volatile (".insn r 0x2b, 0, 37, %[rd], %[rs1], x1"
-        : : [rd] "r" (@intFromPtr(&uninit)), [rs1] "r" (p_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&uninit)),
+          [rs1] "r" (p_ptr),
+        : .{ .memory = true });
 
     // SETUP_ADDSUB for mod_idx=5 (P-256 n): funct7 = 5*8+5 = 45, rs2=x0
     asm volatile (".insn r 0x2b, 0, 45, %[rd], %[rs1], x0"
-        : : [rd] "r" (@intFromPtr(&uninit)), [rs1] "r" (n_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&uninit)),
+          [rs1] "r" (n_ptr),
+        : .{ .memory = true });
     // SETUP_MULDIV for mod_idx=5 (P-256 n): funct7=45, rs2=x1
     asm volatile (".insn r 0x2b, 0, 45, %[rd], %[rs1], x1"
-        : : [rd] "r" (@intFromPtr(&uninit)), [rs1] "r" (n_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&uninit)),
+          [rs1] "r" (n_ptr),
+        : .{ .memory = true });
 
     // SETUP_EC_ADD_NE for curve_idx=2 (P-256): funct7 = 2*8+2 = 18, rs2 != x0
     asm volatile (".insn r 0x2b, 1, 18, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(&ec_uninit)), [rs1] "r" (p1_ptr), [rs2] "r" (p2_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&ec_uninit)),
+          [rs1] "r" (p1_ptr),
+          [rs2] "r" (p2_ptr),
+        : .{ .memory = true });
     // SETUP_EC_DOUBLE for curve_idx=2 (P-256): funct7=18, rs2=x0
     asm volatile (".insn r 0x2b, 1, 18, %[rd], %[rs1], x0"
-        : : [rd] "r" (@intFromPtr(&ec_uninit)), [rs1] "r" (p1_ptr) : .{ .memory = true });
+        :
+        : [rd] "r" (@intFromPtr(&ec_uninit)),
+          [rs1] "r" (p1_ptr),
+        : .{ .memory = true });
 }
 
 // ── Modular arithmetic (mod_idx=4, P-256 p) ───────────────────────────────────
@@ -157,14 +175,20 @@ fn setupOnce() void {
 inline fn addModP(out: *Fe, a: *const Fe, b: *const Fe) void {
     // funct7 = 4*8+0 = 32
     asm volatile (".insn r 0x2b, 0, 32, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(out)), [rs1] "r" (@intFromPtr(a)), [rs2] "r" (@intFromPtr(b))
+        :
+        : [rd] "r" (@intFromPtr(out)),
+          [rs1] "r" (@intFromPtr(a)),
+          [rs2] "r" (@intFromPtr(b)),
         : .{ .memory = true });
 }
 
 inline fn mulModP(out: *Fe, a: *const Fe, b: *const Fe) void {
     // funct7 = 4*8+2 = 34
     asm volatile (".insn r 0x2b, 0, 34, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(out)), [rs1] "r" (@intFromPtr(a)), [rs2] "r" (@intFromPtr(b))
+        :
+        : [rd] "r" (@intFromPtr(out)),
+          [rs1] "r" (@intFromPtr(a)),
+          [rs2] "r" (@intFromPtr(b)),
         : .{ .memory = true });
 }
 
@@ -173,14 +197,20 @@ inline fn mulModP(out: *Fe, a: *const Fe, b: *const Fe) void {
 inline fn subModN(out: *Fe, a: *const Fe, b: *const Fe) void {
     // funct7 = 5*8+1 = 41
     asm volatile (".insn r 0x2b, 0, 41, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(out)), [rs1] "r" (@intFromPtr(a)), [rs2] "r" (@intFromPtr(b))
+        :
+        : [rd] "r" (@intFromPtr(out)),
+          [rs1] "r" (@intFromPtr(a)),
+          [rs2] "r" (@intFromPtr(b)),
         : .{ .memory = true });
 }
 
 inline fn divModN(out: *Fe, a: *const Fe, b: *const Fe) void {
     // funct7 = 5*8+3 = 43
     asm volatile (".insn r 0x2b, 0, 43, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(out)), [rs1] "r" (@intFromPtr(a)), [rs2] "r" (@intFromPtr(b))
+        :
+        : [rd] "r" (@intFromPtr(out)),
+          [rs1] "r" (@intFromPtr(a)),
+          [rs2] "r" (@intFromPtr(b)),
         : .{ .memory = true });
 }
 
@@ -193,14 +223,19 @@ fn isInfinity(p: *const [64]u8) bool {
 }
 
 fn pointAddInPlace(a: *[64]u8, b: *const [64]u8) void {
-    if (isInfinity(a)) { @memcpy(a, b); return; }
+    if (isInfinity(a)) {
+        @memcpy(a, b);
+        return;
+    }
     if (isInfinity(b)) return;
 
     if (std.mem.eql(u8, a[0..32], b[0..32])) {
         if (std.mem.eql(u8, a[32..64], b[32..64])) {
             // EC_DOUBLE in-place; funct7 = 2*8+1 = 17
             asm volatile (".insn r 0x2b, 1, 17, %[rd], %[rs1], x0"
-                : : [rd] "r" (@intFromPtr(a)), [rs1] "r" (@intFromPtr(a))
+                :
+                : [rd] "r" (@intFromPtr(a)),
+                  [rs1] "r" (@intFromPtr(a)),
                 : .{ .memory = true });
         } else {
             @memset(a, 0); // P + (-P) = infinity
@@ -209,7 +244,10 @@ fn pointAddInPlace(a: *[64]u8, b: *const [64]u8) void {
     }
     // EC_ADD_NE; funct7 = 2*8+0 = 16
     asm volatile (".insn r 0x2b, 1, 16, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(a)), [rs1] "r" (@intFromPtr(a)), [rs2] "r" (@intFromPtr(b))
+        :
+        : [rd] "r" (@intFromPtr(a)),
+          [rs1] "r" (@intFromPtr(a)),
+          [rs2] "r" (@intFromPtr(b)),
         : .{ .memory = true });
 }
 
@@ -226,7 +264,9 @@ fn scalarMul(result: *[64]u8, k: *const Fe, p: *const [64]u8) void {
         if (!isInfinity(&cur)) {
             // EC_DOUBLE; funct7=17
             asm volatile (".insn r 0x2b, 1, 17, %[rd], %[rs1], x0"
-                : : [rd] "r" (@intFromPtr(&cur)), [rs1] "r" (@intFromPtr(&cur))
+                :
+                : [rd] "r" (@intFromPtr(&cur)),
+                  [rs1] "r" (@intFromPtr(&cur)),
                 : .{ .memory = true });
         }
     }

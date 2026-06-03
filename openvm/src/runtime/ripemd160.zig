@@ -45,13 +45,25 @@ const SR = [80]u5{
 
 // ── Round functions ───────────────────────────────────────────────────────────
 
-inline fn f0(x: u32, y: u32, z: u32) u32 { return x ^ y ^ z; }
-inline fn f1(x: u32, y: u32, z: u32) u32 { return (x & y) | (~x & z); }
-inline fn f2(x: u32, y: u32, z: u32) u32 { return (x | ~y) ^ z; }
-inline fn f3(x: u32, y: u32, z: u32) u32 { return (x & z) | (y & ~z); }
-inline fn f4(x: u32, y: u32, z: u32) u32 { return x ^ (y | ~z); }
+inline fn f0(x: u32, y: u32, z: u32) u32 {
+    return x ^ y ^ z;
+}
+inline fn f1(x: u32, y: u32, z: u32) u32 {
+    return (x & y) | (~x & z);
+}
+inline fn f2(x: u32, y: u32, z: u32) u32 {
+    return (x | ~y) ^ z;
+}
+inline fn f3(x: u32, y: u32, z: u32) u32 {
+    return (x & z) | (y & ~z);
+}
+inline fn f4(x: u32, y: u32, z: u32) u32 {
+    return x ^ (y | ~z);
+}
 
-inline fn rol(x: u32, n: u5) u32 { return std.math.rotl(u32, x, n); }
+inline fn rol(x: u32, n: u5) u32 {
+    return std.math.rotl(u32, x, n);
+}
 
 // ── Compress one 64-byte block ────────────────────────────────────────────────
 
@@ -61,8 +73,16 @@ fn compressBlock(h: *[5]u32, block: *const [64]u8) void {
         x[i] = std.mem.readInt(u32, block[i * 4 ..][0..4], .little);
     }
 
-    var al = h[0]; var bl = h[1]; var cl = h[2]; var dl = h[3]; var el = h[4];
-    var ar = h[0]; var br = h[1]; var cr = h[2]; var dr = h[3]; var er = h[4];
+    var al = h[0];
+    var bl = h[1];
+    var cl = h[2];
+    var dl = h[3];
+    var el = h[4];
+    var ar = h[0];
+    var br = h[1];
+    var cr = h[2];
+    var dr = h[3];
+    var er = h[4];
 
     comptime var j: usize = 0;
     inline while (j < 80) : (j += 1) {
@@ -86,10 +106,18 @@ fn compressBlock(h: *[5]u32, block: *const [64]u8) void {
         };
 
         const tl = rol(al +% fl +% x[RL[j]] +% KL[round], SL[j]) +% el;
-        al = el; el = dl; dl = rol(cl, 10); cl = bl; bl = tl;
+        al = el;
+        el = dl;
+        dl = rol(cl, 10);
+        cl = bl;
+        bl = tl;
 
         const tr = rol(ar +% fr +% x[RR[j]] +% KR[round], SR[j]) +% er;
-        ar = er; er = dr; dr = rol(cr, 10); cr = br; br = tr;
+        ar = er;
+        er = dr;
+        dr = rol(cr, 10);
+        cr = br;
+        br = tr;
     }
 
     const t = h[1] +% cl +% dr;

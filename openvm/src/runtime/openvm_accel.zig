@@ -29,8 +29,9 @@ inline fn nativeXorin(state: *[KECCAK_WIDTH]u8, inp: *const [KECCAK_RATE]u8) voi
     const src: usize = @intFromPtr(inp);
     const len: usize = KECCAK_RATE;
     asm volatile (".insn r 0x0b, 4, 1, %[buf], %[src], %[len]"
-        : [buf] "+r" (buf)
-        : [src] "r" (src), [len] "r" (len)
+        : [buf] "+r" (buf),
+        : [src] "r" (src),
+          [len] "r" (len),
         : .{ .memory = true });
 }
 
@@ -40,7 +41,7 @@ inline fn nativeXorin(state: *[KECCAK_WIDTH]u8, inp: *const [KECCAK_RATE]u8) voi
 inline fn nativeKeccakf(state: *[KECCAK_WIDTH]u8) void {
     var buf: usize = @intFromPtr(state);
     asm volatile (".insn r 0x0b, 4, 0, %[buf], x0, x0"
-        : [buf] "+r" (buf)
+        : [buf] "+r" (buf),
         :
         : .{ .memory = true });
 }
@@ -86,7 +87,10 @@ const SHA256_IV: [32]u8 align(8) = .{
 /// state: 8 u32 words in little-endian; block: 64 raw bytes; out: same format as state.
 inline fn nativeSha256Compress(out: *[32]u8, state: *const [32]u8, block: *const [64]u8) void {
     asm volatile (".insn r 0x0b, 4, 2, %[rd], %[rs1], %[rs2]"
-        : : [rd] "r" (@intFromPtr(out)), [rs1] "r" (@intFromPtr(state)), [rs2] "r" (@intFromPtr(block))
+        :
+        : [rd] "r" (@intFromPtr(out)),
+          [rs1] "r" (@intFromPtr(state)),
+          [rs2] "r" (@intFromPtr(block)),
         : .{ .memory = true });
 }
 
@@ -223,12 +227,14 @@ pub fn bls12_pairing(pairs: anytype, verified: *bool) bool {
 }
 
 pub fn bls12_map_fp_to_g1(field_element: *const [48]u8, result: *[96]u8) bool {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return false;
 }
 
 pub fn bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u8) bool {
-    _ = field_element; _ = result;
+    _ = field_element;
+    _ = result;
     return false;
 }
 
