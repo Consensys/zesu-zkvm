@@ -9,26 +9,73 @@ zkVM target.
 | Directory | zkVM | Status |
 |---|---|---|
 | [`zisk/`](zisk/) | [Zisk 0.17.0](https://github.com/0xPolygonHermez/zisk) | Working |
-| [`openvm/`](openvm/) | [openvm](https://github.com/openvm-org/openvm/pull/2719) | Working (emulation only, no proofs) |
+| [`openvm/`](openvm/) | [openvm](https://github.com/openvm-org/openvm) | Working (emulation only, no proofs) |
+| [`linea/`](linea/) | [Linea zkVM](https://github.com/Consensys/linea-zkvm) | Working |
+
+## Building
+
+There are two ways to supply the zesu core object, depending on whether you want
+to build against a published release or a local development checkout.
+
+### Against a published zesu release (recommended)
+
+Download `zesu.rv64im.o` from the [zesu releases page](https://github.com/Consensys/zesu/releases)
+and pass it via `-Dzesu_obj`. This avoids cloning the zesu repository entirely.
+
+```sh
+# Download the latest release
+curl -fsSL https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o \
+  -o /tmp/zesu.rv64im.o
+
+# Or pin a specific tag
+curl -fsSL https://github.com/Consensys/zesu/releases/download/bal-devnet-3/zesu.rv64im.o \
+  -o /tmp/zesu.rv64im.o
+
+# Build any target
+zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu.rv64im.o   # from zisk/, openvm/, or linea/
+```
+
+For the zisk target, `libziskos.a` must also be present. See [`zisk/README.md`](zisk/README.md)
+for the full build procedure, or use the Makefile which handles this automatically:
+
+```sh
+cd zisk
+make ZESU_OBJ=/tmp/zesu.rv64im.o
+```
+
+### Against a local zesu checkout (development)
+
+When working on zesu and zesu-zkvm together, omit `-Dzesu_obj` and the build
+falls back to the `zesu_core` path dependency, which expects the `zesu` repo
+checked out as a sibling:
+
+```
+<parent>/
+  zesu-zkvm/    <- this repo
+  zesu/         <- EVM + stateless executor (zesu/core is the path dependency)
+  zisk/         <- Zisk source checkout (needed to build libziskos.a for zisk target)
+```
+
+```sh
+# From zisk/, openvm/, or linea/ — no -Dzesu_obj needed
+zig build -Doptimize=ReleaseFast
+```
+
+The path dependency is declared in each target's `build.zig.zon`:
+
+```
+.zesu_core = .{
+    .path = "../../zesu/core",
+},
+```
 
 ## Repository layout
 
 ```
 zesu-zkvm/
-  zisk/       — Zisk zkVM guest (Zig + libziskos.a)
-  openvm/        — openvm guest (Zig ELF + Rust host runner)
+  zisk/     — Zisk zkVM guest (Zig + libziskos.a)
+  openvm/   — OpenVM guest (Zig ELF)
+  linea/    — Linea zkVM guest (Zig ELF, stripped)
 ```
 
-Each target directory contains its own `build.zig`, `Makefile`, and `README.md`.
-See the target-specific README for build instructions.
-
-## Shared sibling layout
-
-All targets expect the following siblings on the filesystem:
-
-```
-dev/stateless/
-  zesu-zkvm/    ← this repo
-  zesu/         ← EVM + stateless executor (zesu/core is the path dependency)
-  zisk/         ← Zisk source checkout (needed to build libziskos.a)
-```
+Each target directory contains its own `build.zig`, linker script, and `README.md`.

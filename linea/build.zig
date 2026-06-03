@@ -1,12 +1,12 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    // ── OpenVM target: RISC-V 64-bit freestanding (rv64im) ───────────────────
-    // Matches riscv64im-openvm-none-elf: no atomics, no compressed, no float.
+    // ── Linea zkVM target: RISC-V 64-bit freestanding (rv64im + zicclsm) ─────
+    // Matches riscv64im_zicclsm-unknown-none-elf per the Linea zkVM Makefile.
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .riscv64,
         .cpu_model = .{ .explicit = &std.Target.riscv.cpu.baseline_rv64 },
-        .cpu_features_add = std.Target.riscv.featureSet(&.{.m}),
+        .cpu_features_add = std.Target.riscv.featureSet(&.{ .m, .zicclsm }),
         .cpu_features_sub = std.Target.riscv.featureSet(&.{ .a, .c, .zca, .zcb, .d, .f, .zicsr, .zaamo, .zalrsc }),
         .os_tag = .freestanding,
         .abi = .none,
@@ -18,8 +18,8 @@ pub fn build(b: *std.Build) void {
     // (omit)                             build from source via zesu_core path dep
     const zesu_obj_path = b.option([]const u8, "zesu_obj", "Path to pre-built zesu.rv64im.o (omit to build from source via zesu_core dep)");
 
-    // ── OpenVM zkvm_io: hint-stream I/O ───────────────────────────────────────
-    const openvm_io_mod = b.createModule(.{
+    // ── Linea zkvm_io: memory-mapped input + write-ecall output ──────────────
+    const linea_io_mod = b.createModule(.{
         .root_source_file = b.path("src/zkvm_io.zig"),
         .target = target,
         .optimize = optimize,
@@ -34,31 +34,32 @@ pub fn build(b: *std.Build) void {
 
     // ── zesu rv64im object ────────────────────────────────────────────────────
 
-    // ── OpenVM host object ────────────────────────────────────────────────────
+    // ── Linea host object ─────────────────────────────────────────────────────
     // Satisfies all extern refs from zesu.o:
     //   - 19 zkvm_* accelerators (pure-Zig / std.crypto stubs)
-    //   - read_input / write_output (hint-stream IO)
-    //   - zkvm_log / zkvm_exit (print_str phantom / TERMINATE)
-    //   - ZISK_BUMP_HEAP_POS / ZISK_BUMP_HEAP_TOP (bump heap vars + init fn)
+    //   - read_input (memory-mapped from _input_start)
+    //   - write_output / zkvm_log (Linux write ecall a7=64)
+    //   - zkvm_exit (Linux exit ecall a7=93)
+    //   - ZKVM_BUMP_HEAP_POS / ZKVM_BUMP_HEAP_TOP + linea_init_heap
     const host_mod = b.createModule(.{
-        .root_source_file = b.path("src/openvm_host.zig"),
+        .root_source_file = b.path("src/linea_host.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .medium,
     });
     host_mod.addImport("accel_impl", accel_impl_mod);
-    host_mod.addImport("zkvm_io", openvm_io_mod);
+    host_mod.addImport("zkvm_io", linea_io_mod);
     const host_obj = b.addObject(.{
-        .name = "openvm-host",
+        .name = "linea-host",
         .root_module = host_mod,
     });
 
     // ── Guest executable ──────────────────────────────────────────────────────
-    // zesu.o (main + EVM logic) + openvm-host.o (host + accelerators).
-    // startup.S provides _start → openvm_init_heap → main.
-    // No partial link needed: no external archive with duplicate symbols.
+    // zesu.o (main + EVM logic) + linea-host.o (host + accelerators).
+    // startup.S provides _start → linea_init_heap → main.
+    // Stripped to minimize binary size per Linea zkVM requirements.
     const exe = b.addExecutable(.{
-        .name = "zesu-openvm",
+        .name = "zesu-linea",
         .root_module = b.createModule(.{
             .root_source_file = null,
             .target = target,
@@ -66,6 +67,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.entry = .{ .symbol_name = "_start" };
+    exe.root_module.strip = true;
     exe.root_module.code_model = .medium;
     if (zesu_obj_path) |path| {
         exe.root_module.addObjectFile(.{ .cwd_relative = path });
@@ -83,13 +85,13 @@ pub fn build(b: *std.Build) void {
     }
     exe.root_module.addObject(host_obj);
     exe.root_module.addAssemblyFile(b.path("src/startup.S"));
-    exe.setLinkerScript(b.path("openvm.ld"));
+    exe.setLinkerScript(b.path("linea.ld"));
 
     b.installArtifact(exe);
 
-    // Run step: build runner, then execute via the Rust runner binary.
-    const run_step = b.step("run", "Run via OpenVM runner (cargo build runner first)");
-    const run_cmd = b.addSystemCommand(&.{"runner/target/release/zesu-openvm-runner"});
+    // Run step: invoke zkc emulator with the built ELF and an input file.
+    const run_step = b.step("run", "Run via Linea zkc emulator (zkc must be in PATH)");
+    const run_cmd = b.addSystemCommand(&.{ "zkc", "run" });
     run_cmd.addArtifactArg(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);

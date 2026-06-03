@@ -1,13 +1,13 @@
-/* OpenVM guest entry point.
+/* Linea zkVM guest entry point.
  * Placed in .text._start so the linker script's KEEP(*(.text._start))
- * forces it to the very first instruction at TEXT_START (0x00200800).
+ * forces it to the very first instruction at PROGRAM origin (0x00000000).
  */
 	.section .text._start,"ax",@progbits
 	.global _start
 	.type   _start, @function
 _start:
-	li   sp, 0x00200400
-	call openvm_init_heap
+	la   sp, _stack_start
+	call linea_init_heap
 	call main
 	unimp
 	.size _start, . - _start

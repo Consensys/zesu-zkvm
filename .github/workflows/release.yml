@@ -1,0 +1,213 @@
+name: Release
+
+# Builds ELF artifacts for each supported zkVM target against a published
+# zesu.rv64im.o object and creates a draft GitHub Release.
+#
+# Trigger manually: Actions → "Release" → Run workflow
+#   release_tag  — tag to create for this repo (e.g. bal-devnet-3)
+#   zesu_version — zesu release tag to pull zesu.rv64im.o from (empty = latest)
+#
+# Targets built:
+#   zisk    — ZisK v0.17.0; links zesu.o + zisk-wrapped.o (host + libziskos merged)
+#   openvm  — OpenVM rv64im; links zesu.o + openvm-host.o
+#   linea   — Linea rv64im; links zesu.o + linea-host.o; stripped ELF
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag for this repo (e.g. bal-devnet-3)"
+        required: true
+        type: string
+      zesu_version:
+        description: "zesu release tag to build against (e.g. bal-devnet-3); empty = latest"
+        required: false
+        type: string
+        default: ""
+
+env:
+  ZISK_VERSION: "0.17.0"
+
+permissions:
+  contents: write
+
+jobs:
+  compile-zisk:
+    name: Compile stateless-validator-zesu-zisk
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Checkout zisk
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 0xPolygonHermez/zisk
+          ref: v${{ env.ZISK_VERSION }}
+          path: upstream-zisk
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: "0.16.0"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Install cargo-zisk runtime deps
+        run: sudo apt-get install -y libomp5 libopenmpi3t64
+
+      - name: Install cargo-zisk
+        run: |
+          ZISK_BIN_DIR="${HOME}/.config/.zisk/bin"
+          mkdir -p "$ZISK_BIN_DIR"
+          curl -fsSL "https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup" \
+            -o "$ZISK_BIN_DIR/ziskup"
+          chmod +x "$ZISK_BIN_DIR/ziskup"
+          "$ZISK_BIN_DIR/ziskup" --cpu --nokey
+          echo "$ZISK_BIN_DIR" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache Zisk Rust toolchain
+        id: cache-zisk-toolchain
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.rustup/toolchains/zisk
+          key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Install Zisk Rust toolchain
+        if: steps.cache-zisk-toolchain.outputs.cache-hit != 'true'
+        run: cargo-zisk toolchain install
+
+      - name: Cache libziskos.a
+        id: cache-libziskos
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: zisk/lib/libziskos.a
+          key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
+
+      - name: Build libziskos.a
+        if: steps.cache-libziskos.outputs.cache-hit != 'true'
+        working-directory: zisk
+        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/upstream-zisk
+
+      - name: Download zesu object
+        run: |
+          mkdir -p /tmp/zesu-obj
+          if [ -n "${{ inputs.zesu_version }}" ]; then
+            URL="https://github.com/Consensys/zesu/releases/download/${{ inputs.zesu_version }}/zesu.rv64im.o"
+          else
+            URL="https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o"
+          fi
+          curl -fsSL "$URL" -o /tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Build Zesu ZisK ELF
+        working-directory: zisk
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stateless-validator-zesu-zisk
+          path: zisk/zig-out/bin/zesu-zisk
+          if-no-files-found: error
+
+  compile-openvm:
+    name: Compile stateless-validator-zesu-openvm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: "0.16.0"
+
+      - name: Download zesu object
+        run: |
+          mkdir -p /tmp/zesu-obj
+          if [ -n "${{ inputs.zesu_version }}" ]; then
+            URL="https://github.com/Consensys/zesu/releases/download/${{ inputs.zesu_version }}/zesu.rv64im.o"
+          else
+            URL="https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o"
+          fi
+          curl -fsSL "$URL" -o /tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Build Zesu OpenVM ELF
+        working-directory: openvm
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stateless-validator-zesu-openvm
+          path: openvm/zig-out/bin/zesu-openvm
+          if-no-files-found: error
+
+  compile-linea:
+    name: Compile stateless-validator-zesu-linea
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout zesu-zkvm
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: "0.16.0"
+
+      - name: Download zesu object
+        run: |
+          mkdir -p /tmp/zesu-obj
+          if [ -n "${{ inputs.zesu_version }}" ]; then
+            URL="https://github.com/Consensys/zesu/releases/download/${{ inputs.zesu_version }}/zesu.rv64im.o"
+          else
+            URL="https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o"
+          fi
+          curl -fsSL "$URL" -o /tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Build Zesu Linea ELF
+        working-directory: linea
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stateless-validator-zesu-linea
+          path: linea/zig-out/bin/zesu-linea
+          if-no-files-found: error
+
+  release:
+    name: Publish draft GitHub Release
+    needs: [compile-zisk, compile-openvm, compile-linea]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Rename artifacts
+        run: |
+          mv artifacts/zesu-zisk   artifacts/stateless-validator-zesu-zisk.elf
+          mv artifacts/zesu-openvm artifacts/stateless-validator-zesu-openvm.elf
+          mv artifacts/zesu-linea  artifacts/stateless-validator-zesu-linea.elf
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ inputs.release_tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ inputs.release_tag }}" \
+            --notes "Built against zesu ${{ inputs.zesu_version || 'latest' }}" \
+            --draft \
+            artifacts/stateless-validator-zesu-zisk.elf \
+            artifacts/stateless-validator-zesu-openvm.elf \
+            artifacts/stateless-validator-zesu-linea.elf
