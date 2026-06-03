@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
     //   - read_input (memory-mapped from _input_start)
     //   - write_output / zkvm_log (Linux write ecall a7=64)
     //   - zkvm_exit (Linux exit ecall a7=93)
-    //   - ZISK_BUMP_HEAP_POS / ZISK_BUMP_HEAP_TOP + linea_init_heap
+    //   - ZKVM_BUMP_HEAP_POS / ZKVM_BUMP_HEAP_TOP + linea_init_heap
     const host_mod = b.createModule(.{
         .root_source_file = b.path("src/linea_host.zig"),
         .target = target,

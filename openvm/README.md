@@ -28,7 +28,7 @@ archive with duplicate symbol definitions. The final link is a clean
 ```
 _start           (startup.S)
   li sp, 0x00200400
-  call openvm_init_heap   — sets ZISK_BUMP_HEAP_POS / ZISK_BUMP_HEAP_TOP
+  call openvm_init_heap   — sets ZKVM_BUMP_HEAP_POS / ZKVM_BUMP_HEAP_TOP
   call main
 
 main()           (zesu.o / zesu/src/zkvm/root.zig, Zig, export fn)
@@ -39,24 +39,24 @@ main()           (zesu.o / zesu/src/zkvm/root.zig, Zig, export fn)
 
 ### Symbol ownership
 
-| Symbol(s) | Source | Implementation |
-|---|---|---|
-| `zkvm_keccak256`, `zkvm_sha256` | `openvm_host.zig` | `std.crypto` |
-| `zkvm_secp256k1_ecrecover`, `zkvm_secp256k1_verify` | `openvm_host.zig` | `std.crypto.ecc.Secp256k1` |
-| `zkvm_ripemd160` | `openvm_host.zig` | stub (returns zero) |
-| `zkvm_modexp` | `openvm_host.zig` | stub (zeros output) |
-| `zkvm_bn254_g1_add`, `zkvm_bn254_g1_mul` | `openvm_host.zig` | stub (returns false) |
-| `zkvm_bn254_pairing` | `openvm_host.zig` | stub (returns false) |
-| `zkvm_blake2f` | `openvm_host.zig` | stub (returns false) |
-| `zkvm_kzg_point_eval` | `openvm_host.zig` | returns verified=true (mainnet only) |
+| Symbol(s)                                                  | Source | Implementation |
+|------------------------------------------------------------|---|---|
+| `zkvm_keccak256`, `zkvm_sha256`                            | `openvm_host.zig` | `std.crypto` |
+| `zkvm_secp256k1_ecrecover`, `zkvm_secp256k1_verify`        | `openvm_host.zig` | `std.crypto.ecc.Secp256k1` |
+| `zkvm_ripemd160`                                           | `openvm_host.zig` | stub (returns zero) |
+| `zkvm_modexp`                                              | `openvm_host.zig` | stub (zeros output) |
+| `zkvm_bn254_g1_add`, `zkvm_bn254_g1_mul`                   | `openvm_host.zig` | stub (returns false) |
+| `zkvm_bn254_pairing`                                       | `openvm_host.zig` | stub (returns false) |
+| `zkvm_blake2f`                                             | `openvm_host.zig` | stub (returns false) |
+| `zkvm_kzg_point_eval`                                      | `openvm_host.zig` | returns verified=true (mainnet only) |
 | `zkvm_bls12_g1_*`, `zkvm_bls12_g2_*`, `zkvm_bls12_pairing` | `openvm_host.zig` | stubs (return false) |
-| `zkvm_bls12_map_fp*`, `zkvm_secp256r1_verify` | `openvm_host.zig` | stubs (return false) |
-| `read_input` | `openvm_host.zig` | hint-stream (hintInput + hintBufferChunked) |
-| `write_output` | `openvm_host.zig` | REVEAL instructions (funct3=2, opcode 0x0b) |
-| `zkvm_log` | `openvm_host.zig` | print_str phantom (funct3=3, imm=1) |
-| `zkvm_exit` | `openvm_host.zig` | TERMINATE instruction (funct3=0, opcode 0x0b) |
-| `ZISK_BUMP_HEAP_POS`, `ZISK_BUMP_HEAP_TOP` | `openvm_host.zig` | BSS vars; initialized by `openvm_init_heap` from `_end` |
-| `openvm_init_heap` | `openvm_host.zig` | called by `_start` before `main` |
+| `zkvm_bls12_map_fp*`, `zkvm_secp256r1_verify`              | `openvm_host.zig` | stubs (return false) |
+| `read_input`                                               | `openvm_host.zig` | hint-stream (hintInput + hintBufferChunked) |
+| `write_output`                                             | `openvm_host.zig` | REVEAL instructions (funct3=2, opcode 0x0b) |
+| `zkvm_log`                                                 | `openvm_host.zig` | print_str phantom (funct3=3, imm=1) |
+| `zkvm_exit`                                                | `openvm_host.zig` | TERMINATE instruction (funct3=0, opcode 0x0b) |
+| `ZKVM_BUMP_HEAP_POS`, `ZKVM_BUMP_HEAP_TOP`                 | `openvm_host.zig` | BSS vars; initialized by `openvm_init_heap` from `_end` |
+| `openvm_init_heap`                                         | `openvm_host.zig` | called by `_start` before `main` |
 
 ## Status
 
