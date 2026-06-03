@@ -9,6 +9,9 @@ on:
 env:
   ZISK_VERSION: "0.17.0"
   ZISK_TARGET: riscv64ima-zisk-zkvm-elf
+  # Set to a zesu release tag (e.g. "bal-devnet-3") to pin a specific version.
+  # Leave empty to use the latest published release.
+  ZESU_VERSION: ""
 
 jobs:
   ci:
@@ -16,20 +19,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Check out all repos as siblings so path dependencies resolve:
-      #   $GITHUB_WORKSPACE/zesu-zkvm   ← this repo
-      #   $GITHUB_WORKSPACE/zesu        ← satisfies ../../zesu/core
-      #   $GITHUB_WORKSPACE/zisk        ← satisfies ZISK_DIR default (../../zisk)
       - name: Checkout zesu-zkvm
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: zesu-zkvm
-
-      - name: Checkout zesu
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ${{ github.repository_owner }}/zesu
-          path: zesu
 
       - name: Checkout zisk
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -83,17 +76,27 @@ jobs:
         working-directory: zesu-zkvm/zisk
         run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
+      - name: Download zesu object
+        run: |
+          mkdir -p /tmp/zesu-obj
+          if [ -n "${{ env.ZESU_VERSION }}" ]; then
+            URL="https://github.com/Consensys/zesu/releases/download/${{ env.ZESU_VERSION }}/zesu.rv64im.o"
+          else
+            URL="https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o"
+          fi
+          curl -fsSL "$URL" -o /tmp/zesu-obj/zesu.rv64im.o
+
       - name: Lint (zisk)
         working-directory: zesu-zkvm/zisk
         run: zig fmt --check src/ build.zig
 
       - name: Build zisk (Debug)
         working-directory: zesu-zkvm/zisk
-        run: zig build
+        run: zig build -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
 
       - name: Build zisk (ReleaseFast)
         working-directory: zesu-zkvm/zisk
-        run: zig build -Doptimize=ReleaseFast
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
 
       - name: Test (zisk)
         working-directory: zesu-zkvm/zisk
@@ -105,7 +108,7 @@ jobs:
 
       - name: Build openvm (ReleaseFast)
         working-directory: zesu-zkvm/openvm
-        run: zig build -Doptimize=ReleaseFast
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
 
       - name: Lint (linea)
         working-directory: zesu-zkvm/linea
@@ -113,7 +116,7 @@ jobs:
 
       - name: Build linea (ReleaseFast)
         working-directory: zesu-zkvm/linea
-        run: zig build -Doptimize=ReleaseFast
+        run: zig build -Doptimize=ReleaseFast -Dzesu_obj=/tmp/zesu-obj/zesu.rv64im.o
 
   vectors:
     name: Vectors
@@ -124,12 +127,6 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: zesu-zkvm
-
-      - name: Checkout zesu
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ${{ github.repository_owner }}/zesu
-          path: zesu
 
       - name: Checkout zisk
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -183,6 +180,16 @@ jobs:
         working-directory: zesu-zkvm/zisk
         run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
+      - name: Download zesu object
+        run: |
+          mkdir -p /tmp/zesu-obj
+          if [ -n "${{ env.ZESU_VERSION }}" ]; then
+            URL="https://github.com/Consensys/zesu/releases/download/${{ env.ZESU_VERSION }}/zesu.rv64im.o"
+          else
+            URL="https://github.com/Consensys/zesu/releases/latest/download/zesu.rv64im.o"
+          fi
+          curl -fsSL "$URL" -o /tmp/zesu-obj/zesu.rv64im.o
+
       - name: Run vectors
         working-directory: zesu-zkvm/zisk
-        run: make test
+        run: make test ZESU_OBJ=/tmp/zesu-obj/zesu.rv64im.o

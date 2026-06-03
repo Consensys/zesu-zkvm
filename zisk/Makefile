@@ -23,11 +23,14 @@ CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
 
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
+ZESU_OBJ  ?=
+
+ZIG_FLAGS  = $(if $(ZESU_OBJ),-Dzesu_obj=$(ZESU_OBJ))
 
 .PHONY: all run test bless clean clean-lib
 
 all: $(LIB_OUT)
-	$(ZIG) build
+	$(ZIG) build $(ZIG_FLAGS)
 
 $(LIB_OUT):
 	@command -v $(CARGO) >/dev/null 2>&1 || \
@@ -53,7 +56,7 @@ endif
 	$(ZISKEMU) -e zig-out/bin/zesu-zisk -i $(INPUT)
 
 test: $(LIB_OUT)
-	$(ZIG) build -Doptimize=ReleaseFast
+	$(ZIG) build -Doptimize=ReleaseFast $(ZIG_FLAGS)
 	@fail=0; \
 	for bin in ../vectors/*.bin; do \
 	    name=$$(basename $$bin .bin); \
@@ -82,7 +85,7 @@ test: $(LIB_OUT)
 	exit $$fail
 
 bless: $(LIB_OUT)
-	$(ZIG) build -Doptimize=ReleaseFast
+	$(ZIG) build -Doptimize=ReleaseFast $(ZIG_FLAGS)
 	@for bin in ../vectors/*.bin; do \
 	    name=$$(basename $$bin .bin); \
 	    expected=../vectors/$$name.expected.hex; \

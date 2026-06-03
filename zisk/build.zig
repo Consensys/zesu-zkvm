@@ -12,16 +12,10 @@ pub fn build(b: *std.Build) void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    // ── zesu-core dependency ──────────────────────────────────────────────────
-    // When built with a freestanding target, core/build.zig:
-    //   - Overrides zesu_allocator → bump_alloc.zig (ZISK_BUMP_HEAP_POS/TOP)
-    //   - Overrides accel_impl → extern_bridge.zig (extern fn zkvm_* refs)
-    //   - Injects extern_io.zig as zkvm_io into runner
-    //   - Exposes "zkvm_root" named module (src/zkvm/root.zig) with all wired deps
-    const zesu_core_dep = b.dependency("zesu_core", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    // ── zesu object ───────────────────────────────────────────────────────────
+    // -Dzesu_obj=/path/to/zesu.rv64im.o  use a pre-built object (CI default)
+    // (omit)                             build from source via zesu_core path dep
+    const zesu_obj_path = b.option([]const u8, "zesu_obj", "Path to pre-built zesu.rv64im.o (omit to build from source via zesu_core dep)");
 
     // ── Zisk zkVM runtime module ──────────────────────────────────────────────
     const zisk_mod = b.addModule("zisk", .{
@@ -46,14 +40,6 @@ pub fn build(b: *std.Build) void {
     accel_impl_mod.addImport("zisk", zisk_mod);
 
     // ── zesu rv64im object ────────────────────────────────────────────────────
-    // Uses core's "zkvm_root" module (already wired with extern_bridge, bump_alloc,
-    // extern_io). Produces an object with main() and all EVM/stateless logic,
-    // leaving IO / crypto / heap / runtime as unresolved extern refs.
-    const zesu_obj = b.addObject(.{
-        .name = "zesu",
-        .root_module = zesu_core_dep.module("zkvm_root"),
-    });
-    zesu_obj.root_module.code_model = .medium;
 
     // ── zisk-host object ─────────────────────────────────────────────────────
     // Compiled separately so it can be partially linked with libziskos.a before
@@ -102,7 +88,20 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.code_model = .medium;
-    exe.root_module.addObject(zesu_obj);
+    if (zesu_obj_path) |path| {
+        exe.root_module.addObjectFile(.{ .cwd_relative = path });
+    } else {
+        const zesu_core_dep = b.dependency("zesu_core", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        const zesu_obj = b.addObject(.{
+            .name = "zesu",
+            .root_module = zesu_core_dep.module("zkvm_root"),
+        });
+        zesu_obj.root_module.code_model = .medium;
+        exe.root_module.addObject(zesu_obj);
+    }
     exe.root_module.addObjectFile(zisk_wrapped);
     exe.setLinkerScript(b.path("zisk.ld"));
 
