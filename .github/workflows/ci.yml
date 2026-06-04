@@ -53,16 +53,8 @@ jobs:
           echo "$ZISK_BIN_DIR" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Cache Zisk Rust toolchain
-        id: cache-zisk-toolchain
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.rustup/toolchains/zisk
-          key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
-
       - name: Install Zisk Rust toolchain
-        if: steps.cache-zisk-toolchain.outputs.cache-hit != 'true'
-        run: cargo-zisk toolchain install
+        run: cargo +zisk --version 2>/dev/null || cargo-zisk toolchain install
 
       - name: Cache libziskos.a
         id: cache-libziskos
@@ -157,16 +149,8 @@ jobs:
           echo "$ZISK_BIN_DIR" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Cache Zisk Rust toolchain
-        id: cache-zisk-toolchain
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.rustup/toolchains/zisk
-          key: zisk-toolchain-${{ env.ZISK_VERSION }}-${{ runner.os }}
-
       - name: Install Zisk Rust toolchain
-        if: steps.cache-zisk-toolchain.outputs.cache-hit != 'true'
-        run: cargo-zisk toolchain install
+        run: cargo +zisk --version 2>/dev/null || cargo-zisk toolchain install
 
       - name: Cache libziskos.a
         id: cache-libziskos
