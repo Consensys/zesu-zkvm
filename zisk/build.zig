@@ -92,7 +92,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addObjectFile(.{ .cwd_relative = path });
     } else {
         const build_zesu = b.addSystemCommand(&.{
-            "zig", "build", "rv64im-object",
+            "zig",                                          "build", "rv64im-object",
             b.fmt("-Doptimize={s}", .{@tagName(optimize)}),
         });
         build_zesu.setCwd(b.path("../../zesu"));
