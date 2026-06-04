@@ -1,6 +1,11 @@
 use std::{env, fs, io::Write, path::PathBuf, process};
 
 use eyre::{eyre, Result, WrapErr};
+use num_bigint::BigUint;
+use num_traits::{FromPrimitive, Zero};
+use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
+use openvm_ecc_circuit::{CurveConfig, WeierstrassExtension, P256_CONFIG, SECP256K1_CONFIG};
+use openvm_pairing_circuit::{PairingExtension, PairingCurve};
 use openvm_sdk::{
     config::{AggregationSystemParams, AppConfig},
     openvm_circuit::{
@@ -44,15 +49,126 @@ fn main() -> Result<()> {
         process::exit(1);
     });
 
-    // Build VM config: rv64i + rv64m + io, with 64 public value bytes.
-    // NOTE: requires a fork of openvm with rv64 support (SdkVmConfig::riscv64).
-    let mut vm_config = SdkVmConfig::riscv64();
+    // BN254 base field prime p and scalar field order r.
+    let bn254_p = BigUint::parse_bytes(
+        b"21888242871839275222246405745257275088696311157297823662689037894645226208583",
+        10,
+    ).unwrap();
+    let bn254_r = BigUint::parse_bytes(
+        b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        10,
+    ).unwrap();
+    let bn254_config = CurveConfig::new(
+        "Bn254G1Affine".to_string(),
+        bn254_p.clone(),
+        bn254_r.clone(),
+        BigUint::zero(),
+        BigUint::from_u8(3).unwrap(),
+    );
+
+    // BLS12-381 base field prime Fq and scalar field order Fr.
+    let bls12_fq = BigUint::parse_bytes(
+        b"4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787",
+        10,
+    ).unwrap();
+    let bls12_fr = BigUint::parse_bytes(
+        b"52435875175126190479447740508185965837690552500527637822603658699938581184513",
+        10,
+    ).unwrap();
+    let bls12_g1_config = CurveConfig::new(
+        "Bls12_381G1Affine".to_string(),
+        bls12_fq.clone(),
+        bls12_fr.clone(),
+        BigUint::zero(),
+        BigUint::from_u8(4).unwrap(),
+    );
+
+    // Build VM config: rv64i + rv64m + io + keccak + sha2
+    //   + modular (secp256k1 p, n, bn254 p, r, p256 p, n, bls12 Fq, Fr)
+    //   + fp2 (Bls12_381Fp2)
+    //   + ecc (secp256k1, bn254 G1, p256, bls12 G1).
+    let mut vm_config = SdkVmConfig::builder()
+        .system(Default::default())
+        .rv64i(Default::default())
+        .rv64m(Default::default())
+        .io(Default::default())
+        .keccak(Default::default())
+        .sha2(Default::default())
+        .modular(ModularExtension::new(vec![
+            SECP256K1_CONFIG.modulus.clone(),
+            SECP256K1_CONFIG.scalar.clone(),
+            bn254_p,
+            bn254_r,
+            P256_CONFIG.modulus.clone(),
+            P256_CONFIG.scalar.clone(),
+            bls12_fq.clone(),
+            bls12_fr,
+        ]))
+        .fp2(Fp2Extension::new(vec![
+            ("Bls12_381Fp2".to_string(), bls12_fq),
+        ]))
+        .ecc(WeierstrassExtension::new(vec![
+            SECP256K1_CONFIG.clone(),
+            bn254_config,
+            P256_CONFIG.clone(),
+            bls12_g1_config,
+        ]))
+        .pairing(PairingExtension::new(vec![PairingCurve::Bls12_381]))
+        .build()
+        .optimize();
     let updated_system = vm_config.as_ref().clone().with_public_values(NUM_PUBLIC_VALUES);
     *vm_config.as_mut() = updated_system;
 
     // Deserialize a minimal TOML to get the correct default system_params.
     // We only care about the app_vm_config here; system_params are not used in execute().
-    let minimal_toml = "[app_vm_config.rv64i]\n[app_vm_config.rv64m]\n[app_vm_config.io]\n";
+    let minimal_toml = concat!(
+        "[app_vm_config.rv64i]\n",
+        "[app_vm_config.rv64m]\n",
+        "[app_vm_config.io]\n",
+        "[app_vm_config.keccak]\n",
+        "[app_vm_config.sha2]\n",
+        "[app_vm_config.modular]\n",
+        "supported_moduli = [\n",
+        "  \"115792089237316195423570985008687907853269984665640564039457584007908834671663\",\n",
+        "  \"115792089237316195423570985008687907852837564279074904382605163141518161494337\",\n",
+        "  \"21888242871839275222246405745257275088696311157297823662689037894645226208583\",\n",
+        "  \"21888242871839275222246405745257275088548364400416034343698204186575808495617\",\n",
+        "  \"115792089210356248762697446949407573530086143415290314195533631308867097853951\",\n",
+        "  \"115792089210356248762697446949407573529996955224135760342422259061068512044369\",\n",
+        "  \"4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787\",\n",
+        "  \"52435875175126190479447740508185965837690552500527637822603658699938581184513\",\n",
+        "]\n",
+        "[app_vm_config.fp2]\n",
+        "supported_moduli = [\n",
+        "  [\"Bls12_381Fp2\", \"4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787\"],\n",
+        "]\n",
+        "[[app_vm_config.ecc.supported_curves]]\n",
+        "struct_name = \"Secp256k1Point\"\n",
+        "modulus = \"115792089237316195423570985008687907853269984665640564039457584007908834671663\"\n",
+        "scalar = \"115792089237316195423570985008687907852837564279074904382605163141518161494337\"\n",
+        "a = \"0\"\n",
+        "b = \"7\"\n",
+        "[[app_vm_config.ecc.supported_curves]]\n",
+        "struct_name = \"Bn254G1Affine\"\n",
+        "modulus = \"21888242871839275222246405745257275088696311157297823662689037894645226208583\"\n",
+        "scalar = \"21888242871839275222246405745257275088548364400416034343698204186575808495617\"\n",
+        "a = \"0\"\n",
+        "b = \"3\"\n",
+        "[[app_vm_config.ecc.supported_curves]]\n",
+        "struct_name = \"P256Point\"\n",
+        "modulus = \"115792089210356248762697446949407573530086143415290314195533631308867097853951\"\n",
+        "scalar = \"115792089210356248762697446949407573529996955224135760342422259061068512044369\"\n",
+        "a = \"115792089210356248762697446949407573530086143415290314195533631308867097853948\"\n",
+        "b = \"41058363725152142129326129780047268409114441015993725554835256314039467401291\"\n",
+        "[[app_vm_config.ecc.supported_curves]]\n",
+        "struct_name = \"Bls12_381G1Affine\"\n",
+        "modulus = \"4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787\"\n",
+        "scalar = \"52435875175126190479447740508185965837690552500527637822603658699938581184513\"\n",
+        "a = \"0\"\n",
+        "b = \"4\"\n",
+        "[app_vm_config.pairing]\n",
+        "supported_curves = [\"Bls12_381\"]\n",
+    );
     let mut app_config: AppConfig<SdkVmConfig> = toml::from_str(minimal_toml)
         .wrap_err("building app config")?;
     app_config.app_vm_config = vm_config.clone();

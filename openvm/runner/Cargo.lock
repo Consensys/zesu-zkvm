@@ -4002,6 +4002,11 @@ name = "zesu-openvm-runner"
 version = "0.1.0"
 dependencies = [
  "eyre",
+ "num-bigint",
+ "num-traits",
+ "openvm-algebra-circuit",
+ "openvm-ecc-circuit",
+ "openvm-pairing-circuit",
  "openvm-sdk",
  "openvm-sdk-config",
  "toml",
