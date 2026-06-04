@@ -4,14 +4,7 @@
     .minimum_zig_version = "0.15.1",
     .fingerprint = 0xba55df56d95db8b3,
 
-    .dependencies = .{
-        // zesu-core: pure module definitions — no native crypto library linkage.
-        // Native crypto (secp256k1, openssl, blst, mcl) is handled by zesu's own
-        // build.zig; this target overrides accel_impl with Zisk CSR implementations.
-        .zesu_core = .{
-            .path = "../../zesu/core",
-        },
-    },
+    .dependencies = .{},
 
     .paths = .{
         "build.zig",

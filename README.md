@@ -46,13 +46,14 @@ make ZESU_OBJ=/tmp/zesu.rv64im.o
 ### Against a local zesu checkout (development)
 
 When working on zesu and zesu-zkvm together, omit `-Dzesu_obj` and the build
-falls back to the `zesu_core` path dependency, which expects the `zesu` repo
+will automatically invoke `zig build rv64im-object` in the sibling zesu checkout
+and link against the resulting `zig-out/lib/zesu.o`. This requires zesu to be
 checked out as a sibling:
 
 ```
 <parent>/
   zesu-zkvm/    <- this repo
-  zesu/         <- EVM + stateless executor (zesu/core is the path dependency)
+  zesu/         <- EVM + stateless executor (built in-place as rv64im object)
   zisk/         <- Zisk source checkout (needed to build libziskos.a for zisk target)
 ```
 
@@ -61,13 +62,7 @@ checked out as a sibling:
 zig build -Doptimize=ReleaseFast
 ```
 
-The path dependency is declared in each target's `build.zig.zon`:
-
-```
-.zesu_core = .{
-    .path = "../../zesu/core",
-},
-```
+Zig's build caching means subsequent builds only recompile zesu when its sources change.
 
 ## Repository layout
 

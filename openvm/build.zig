@@ -71,16 +71,13 @@ pub fn build(b: *std.Build) void {
     if (zesu_obj_path) |path| {
         exe.root_module.addObjectFile(.{ .cwd_relative = path });
     } else {
-        const zesu_core_dep = b.dependency("zesu_core", .{
-            .target = target,
-            .optimize = optimize,
+        const build_zesu = b.addSystemCommand(&.{
+            "zig",                                          "build", "rv64im-object",
+            b.fmt("-Doptimize={s}", .{@tagName(optimize)}),
         });
-        const zesu_obj = b.addObject(.{
-            .name = "zesu",
-            .root_module = zesu_core_dep.module("zkvm_root"),
-        });
-        zesu_obj.root_module.code_model = .medium;
-        exe.root_module.addObject(zesu_obj);
+        build_zesu.setCwd(b.path("../../zesu"));
+        exe.root_module.addObjectFile(b.path("../../zesu/zig-out/lib/zesu.o"));
+        exe.step.dependOn(&build_zesu.step);
     }
     exe.root_module.addObject(host_obj);
     exe.root_module.addAssemblyFile(b.path("src/startup.S"));
