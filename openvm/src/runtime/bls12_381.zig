@@ -335,6 +335,16 @@ fn fqIsCanonical(v: *const Fq) bool {
     return false;
 }
 
+fn frIsCanonical(v: *const Fr) bool {
+    var i: usize = 32;
+    while (i > 0) {
+        i -= 1;
+        if (v[i] < FR_LE[i]) return true;
+        if (v[i] > FR_LE[i]) return false;
+    }
+    return false;
+}
+
 fn g1IsInfinity(p: *const [96]u8) bool {
     const words: *const [12]u64 = @ptrCast(@alignCast(p));
     for (words) |w| if (w != 0) return false;
@@ -584,6 +594,7 @@ fn decompressG1(compressed: *const [48]u8, out: *[96]u8) bool {
     var x_be: [48]u8 = compressed.*;
     x_be[0] &= 0x1f;
     var x: Fq align(8) = fqBeToLe(&x_be);
+    if (!fqIsCanonical(&x)) return false;
     var x2: Fq align(8) = undefined;
     var x3: Fq align(8) = undefined;
     var rhs: Fq align(8) = undefined;
@@ -694,6 +705,7 @@ pub fn g1Msm(pairs: anytype, result: *[96]u8) bool {
         @memcpy(p_buf[48..96], &py);
 
         const k_le = frBeToLe(sc);
+        if (!frIsCanonical(&k_le)) return false;
         var term: [96]u8 align(8) = undefined;
         g1ScalarMul(&term, &k_le, &p_buf);
         g1PointAddInPlace(&acc, &term);
@@ -748,6 +760,7 @@ pub fn g2Msm(pairs: anytype, result: *[192]u8) bool {
         if (!g2IsOnCurveOrIdentity(px, py)) return false;
 
         const k_le = frBeToLe(sc);
+        if (!frIsCanonical(&k_le)) return false;
         var term: [192]u8 align(8) = undefined;
         g2ScalarMul(&term, &k_le, &p_internal);
         g2PointAddInPlace(&acc, &term);

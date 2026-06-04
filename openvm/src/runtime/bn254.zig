@@ -266,6 +266,7 @@ pub fn g1Mul(point: *const [64]u8, scalar: *const [32]u8, result: *[64]u8) bool 
     @memcpy(p_buf[32..64], &py);
 
     const k_le = beToLe(scalar);
+    if (!isCanonical(&k_le, &R_LE)) return false;
     var res: [64]u8 align(8) = undefined;
     scalarMul(&res, &k_le, &p_buf);
 

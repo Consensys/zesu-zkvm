@@ -328,6 +328,7 @@ fn doRecover(msg_hash: [32]u8, sig: [64]u8, recid: u8) ?[64]u8 {
     var r_le: Fe align(8) = beToLe(sig[0..32]);
     var s_le: Fe align(8) = beToLe(sig[32..64]);
     if (feIsZero(&r_le) or feIsZero(&s_le)) return null;
+    if (!feNumericLessThan(&r_le, &N_LE) or !feNumericLessThan(&s_le, &N_LE)) return null;
 
     // z = hash mod n.  Hash is 256-bit; n > 2^255 so at most one subtraction needed.
     var z_le: Fe align(8) = beToLe(&msg_hash);
