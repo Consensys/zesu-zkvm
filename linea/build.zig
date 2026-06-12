@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
 
     // ── accel_impl: pure-Zig implementations (std.crypto + stubs) ────────────
     const accel_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/stdlibs_accel.zig"),
+        .root_source_file = b.path("src/zkvm_accel/linea_accel.zig"),
         .target = target,
         .optimize = optimize,
     });
