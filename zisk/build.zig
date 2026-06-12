@@ -42,8 +42,7 @@ pub fn build(b: *std.Build) void {
     // In ZisK 0.18, all accelerators come from libziskos_staticlib.a with no duplicates.
     const wrap_cmd = b.addSystemCommand(&.{
         "zig", "ld.lld",
-        "-r",
-        "--whole-archive",
+        "-r",  "--whole-archive",
     });
     wrap_cmd.addFileArg(host_obj.getEmittedBin());
     wrap_cmd.addFileArg(b.path("lib/libziskos_staticlib.a"));

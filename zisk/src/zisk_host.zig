@@ -8,7 +8,6 @@
 ///   read_input / write_output        — zkvm-standards io-interface
 ///   zkvm_* accelerators              — all 19 circuit-backed implementations (ZisK 0.18)
 ///   zkvm_init / zkvm_deinit / _start — entrypoint and lifecycle
-
 /// Zisk zkVM UART — byte writes here appear in ziskemu console output
 const ZISK_UART: *volatile u8 = @ptrFromInt(0xa0000200);
 
@@ -44,4 +43,3 @@ export fn sys_read(fd: i32, buf: [*]u8, count: usize) isize {
     _ = count;
     return 0;
 }
-
