@@ -52,21 +52,30 @@ extern fn zkvm_bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u
 // ── Keccak-256 — keccakf CSR (0x800) ─────────────────────────────────────────
 
 const KECCAK_RATE = 136; // 1088-bit rate for Keccak-256
+const KECCAK_NWORDS = KECCAK_RATE / 8; // 17 u64 words per rate block
 
 pub fn keccak256(data: []const u8, output: *[32]u8) void {
-    var state: [200]u8 align(8) = undefined;
-    for (@as(*[25]u64, @ptrCast(&state))) |*w| w.* = 0;
+    var state: [200]u8 align(8) = .{0} ** 200;
+    const sw = @as(*[KECCAK_NWORDS]u64, @ptrCast(&state));
     var offset: usize = 0;
 
+    // Absorb full blocks word-wise (17 × u64 per block vs. 136 byte ops).
     while (offset + KECCAK_RATE <= data.len) : (offset += KECCAK_RATE) {
-        for (0..KECCAK_RATE) |i| state[i] ^= data[offset + i];
+        inline for (0..KECCAK_NWORDS) |i| {
+            sw[i] ^= std.mem.readInt(u64, data[offset + i * 8 ..][0..8], .little);
+        }
         zisk.keccakf(&state);
     }
 
+    // Tail block: copy remaining bytes into an aligned pad buffer, apply
+    // Keccak-256 domain padding, then word-XOR into state.
     const remaining = data.len - offset;
-    for (0..remaining) |i| state[i] ^= data[offset + i];
-    state[remaining] ^= 0x01;
-    state[KECCAK_RATE - 1] ^= 0x80;
+    var pad: [KECCAK_RATE]u8 align(8) = .{0} ** KECCAK_RATE;
+    @memcpy(pad[0..remaining], data[offset..]);
+    pad[remaining] ^= 0x01;
+    pad[KECCAK_RATE - 1] ^= 0x80;
+    const pw = @as(*const [KECCAK_NWORDS]u64, @ptrCast(&pad));
+    inline for (0..KECCAK_NWORDS) |i| sw[i] ^= pw[i];
     zisk.keccakf(&state);
 
     output.* = state[0..32].*;
