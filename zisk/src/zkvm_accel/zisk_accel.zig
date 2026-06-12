@@ -22,7 +22,8 @@
 ///   blake2f        — pure-Zig (blake2bRound CSR is blake2B, not blake2F)
 ///   secp256r1_verify — secp256r1Add/Double CSRs via secp256r1.zig
 const std = @import("std");
-const zisk = @import("zisk");
+const circuits = @import("./circuits.zig");
+const zisk_alloc = @import("./allocator.zig");
 const secp256k1_impl = @import("./secp256k1.zig");
 const secp256r1_impl = @import("./secp256r1.zig");
 const blake2f_impl = @import("./blake2f.zig");
@@ -60,14 +61,14 @@ pub fn keccak256(data: []const u8, output: *[32]u8) void {
 
     while (offset + KECCAK_RATE <= data.len) : (offset += KECCAK_RATE) {
         for (0..KECCAK_RATE) |i| state[i] ^= data[offset + i];
-        zisk.keccakf(&state);
+        circuits.keccakf(&state);
     }
 
     const remaining = data.len - offset;
     for (0..remaining) |i| state[i] ^= data[offset + i];
     state[remaining] ^= 0x01;
     state[KECCAK_RATE - 1] ^= 0x80;
-    zisk.keccakf(&state);
+    circuits.keccakf(&state);
 
     output.* = state[0..32].*;
 }
@@ -85,7 +86,7 @@ fn sha256CompressState(state: *[8]u32, block: *const [64]u8) void {
     var buf: [96]u8 align(8) = undefined;
     @memcpy(buf[0..64], block);
     @memcpy(buf[64..96], std.mem.sliceAsBytes(state));
-    zisk.sha256Compress(&buf);
+    circuits.sha256Compress(&buf);
     @memcpy(std.mem.sliceAsBytes(state), buf[64..96]);
 }
 
@@ -162,7 +163,7 @@ fn modexp256(base: []const u8, exp: []const u8, modulus: []const u8, output: []u
 
     var base_le = rev32(padBE32(base));
     var a_le: [32]u8 = undefined;
-    zisk.arith256ModDirect(&base_le, &one_le, &zero, &mod_le, &a_le);
+    circuits.arith256ModDirect(&base_le, &one_le, &zero, &mod_le, &a_le);
 
     var result_le = one_le;
 
@@ -178,12 +179,12 @@ fn modexp256(base: []const u8, exp: []const u8, modulus: []const u8, output: []u
         const bit_idx: u3 = @intCast(i % 8);
         if ((exp_be[31 - byte_idx] >> bit_idx) & 1 != 0) {
             var tmp: [32]u8 = undefined;
-            zisk.arith256ModDirect(&result_le, &a_le, &zero, &mod_le, &tmp);
+            circuits.arith256ModDirect(&result_le, &a_le, &zero, &mod_le, &tmp);
             result_le = tmp;
         }
         if (i < highest_bit) {
             var tmp: [32]u8 = undefined;
-            zisk.arith256ModDirect(&a_le, &a_le, &zero, &mod_le, &tmp);
+            circuits.arith256ModDirect(&a_le, &a_le, &zero, &mod_le, &tmp);
             a_le = tmp;
         }
     }
@@ -380,7 +381,7 @@ pub fn modexp(base: []const u8, exp: []const u8, modulus: []const u8, output: []
         return true;
     }
 
-    var allocator_state = zisk.ZiskAllocator.init();
+    var allocator_state = zisk_alloc.ZiskAllocator.init();
     const alloc = allocator_state.allocator();
     modexpGeneral(alloc, base, exp, modulus, output) catch @memset(output, 0);
     return true;
@@ -520,7 +521,7 @@ pub fn bls12_g1_msm(pairs: anytype, result: *[96]u8) bool {
         const ptr: [*]const Bls12G1MsmPair = @ptrCast(pairs.ptr);
         return zkvm_bls12_g1_msm(ptr, pairs.len, result) == 0;
     }
-    var allocator_state = zisk.ZiskAllocator.init();
+    var allocator_state = zisk_alloc.ZiskAllocator.init();
     const alloc = allocator_state.allocator();
     const filtered = alloc.alloc(Bls12G1MsmPair, n_valid) catch return false;
     defer alloc.free(filtered);
@@ -579,7 +580,7 @@ pub fn bls12_g2_msm(pairs: anytype, result: *[192]u8) bool {
         const ptr: [*]const Bls12G2MsmPair = @ptrCast(pairs.ptr);
         return zkvm_bls12_g2_msm(ptr, pairs.len, result) == 0;
     }
-    var allocator_state = zisk.ZiskAllocator.init();
+    var allocator_state = zisk_alloc.ZiskAllocator.init();
     const alloc = allocator_state.allocator();
     const filtered = alloc.alloc(Bls12G2MsmPair, n_valid) catch return false;
     defer alloc.free(filtered);

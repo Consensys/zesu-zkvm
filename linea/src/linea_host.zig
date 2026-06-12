@@ -7,7 +7,7 @@
 ///   ZKVM_HEAP_POS / ZKVM_HEAP_TOP — heap region vars
 ///   linea_init_heap                    — called by startup.S before main()
 ///
-/// Accelerators delegate to stdlibs_accel.zig (pure-Zig / std.crypto):
+/// Accelerators delegate to linea_accel.zig (pure-Zig / std.crypto):
 ///   keccak256, sha256, ecrecover, secp256k1_verify — functional
 ///   ripemd160, modexp, bn254_*, blake2f — stubs (return failure)
 ///   kzg_point_eval                     — returns verified=true (mainnet only)

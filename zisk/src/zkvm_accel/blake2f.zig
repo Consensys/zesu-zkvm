@@ -13,7 +13,7 @@
 //! Output: 64 bytes — updated h state (8×u64 little-endian).
 
 const std = @import("std");
-const zisk = @import("zisk");
+const zisk = @import("./circuits.zig");
 
 /// BLAKE2b initialization vector (constants from the spec).
 const IV: [8]u64 = .{

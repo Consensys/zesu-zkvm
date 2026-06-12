@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
     // ecrecover/secp256k1_verify: native modular arithmetic + ECC opcodes
     // ripemd160/modexp/bn254/bls12/blake2f: pure-Zig implementations
     const accel_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/openvm_accel.zig"),
+        .root_source_file = b.path("src/zkvm_accel/openvm_accel.zig"),
         .target = target,
         .optimize = optimize,
     });

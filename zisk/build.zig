@@ -17,13 +17,6 @@ pub fn build(b: *std.Build) void {
     // (omit)                             build from source via zesu_core path dep
     const zesu_obj_path = b.option([]const u8, "zesu_obj", "Path to pre-built zesu.rv64im.o (omit to build from source via zesu_core dep)");
 
-    // ── Zisk zkVM runtime module ──────────────────────────────────────────────
-    const zisk_mod = b.addModule("zisk", .{
-        .root_source_file = b.path("src/runtime/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     // ── ZisK zkvm_io: memory-mapped I/O per zkvm-standards ───────────────────
     const zisk_io_mod = b.createModule(.{
         .root_source_file = b.path("src/zkvm_io.zig"),
@@ -33,12 +26,10 @@ pub fn build(b: *std.Build) void {
 
     // ── accel_impl: ZisK CSR-backed accelerators ─────────────────────────────
     const accel_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/zisk_accel_impl.zig"),
+        .root_source_file = b.path("src/zkvm_accel/zisk_accel.zig"),
         .target = target,
         .optimize = optimize,
     });
-    accel_impl_mod.addImport("zisk", zisk_mod);
-
     // ── zesu rv64im object ────────────────────────────────────────────────────
 
     // ── zisk-host object ─────────────────────────────────────────────────────

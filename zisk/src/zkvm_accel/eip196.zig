@@ -3,7 +3,7 @@
 /// Provides high-level functions that handle big-endian EIP format conversions
 /// and dispatch to the Zisk hardware circuits via the zisk module.
 const std = @import("std");
-const zisk = @import("zisk");
+const zisk = @import("./circuits.zig");
 const bn254_pairing = @import("./bn254_pairing.zig");
 
 // ── BN254 G1 curve equation: y² ≡ x³ + 3 (mod p) ─────────────────────────────

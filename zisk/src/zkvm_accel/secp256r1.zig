@@ -9,7 +9,7 @@
 //! Field/scalar elements use the same LE 32-byte representation (byte 0 = LSB).
 
 const std = @import("std");
-const zisk = @import("zisk");
+const zisk = @import("./circuits.zig");
 
 // ── P-256 constants (little-endian 256-bit integers) ──────────────────────────
 // align(8) on constants ensures word-aligned CSR inputs without runtime cost.

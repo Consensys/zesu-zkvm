@@ -13,7 +13,7 @@
 ///   ⚠ Final exponentiation is a placeholder (single square)
 ///   TODO: implement full final exponentiation for EIP-197 compliance
 const std = @import("std");
-const circuits = @import("zisk"); // zisk module provides all circuit functions
+const circuits = @import("./circuits.zig");
 
 pub const Fp2 = struct {
     data: [64]u8 align(8), // [c0: 32 bytes | c1: 32 bytes] little-endian limbs

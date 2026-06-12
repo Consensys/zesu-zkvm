@@ -15,7 +15,7 @@
 //!                   Returns false if recovery fails.
 
 const std = @import("std");
-const zisk = @import("zisk");
+const zisk = @import("./circuits.zig");
 
 // ── secp256k1 constants (little-endian 256-bit integers) ──────────────────────
 // align(8) on constants ensures word-aligned CSR inputs without runtime cost.
