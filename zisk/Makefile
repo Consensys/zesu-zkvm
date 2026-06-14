@@ -1,25 +1,25 @@
 # Makefile for the Zisk zkVM guest build of zesu.
 #
 # Prerequisites:
-#   - cargo-zisk installed: curl -L https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
-#   - Zisk toolchain installed: cargo-zisk toolchain install
+#   - Rust stable toolchain (rustup default stable)
 #   - Zisk source checkout (default: ../../zisk, override via ZISK_DIR)
 #   - Zig (see minimum_zig_version in build.zig.zon)
 #
 # Usage:
-#   make lib/libziskos.a   — build the Zisk OS library
-#   make                   — build lib/libziskos.a then the Zig guest ELF
-#   make run INPUT=<file>  — build and run under ziskemu
-#   make clean             — remove build artifacts (preserves lib/libziskos.a)
-#   make clean-lib         — also remove lib/libziskos.a (forces a rebuild)
+#   make lib/libziskos_staticlib.a — build the Zisk OS static library (ZisK 0.18)
+#   make                           — build lib/libziskos_staticlib.a then the Zig guest ELF
+#   make run INPUT=<file>          — build and run under ziskemu
+#   make clean                     — remove build artifacts (preserves lib/libziskos_staticlib.a)
+#   make clean-lib                 — also remove lib/libziskos_staticlib.a (forces a rebuild)
 
 ZISK_DIR  ?= ../../zisk
-ZISK_PKG   = ziskos
+ZISK_PKG   = ziskos-staticlib
+ZISK_LIB   = ziskos_staticlib
 ZISK_TARGET = riscv64ima-zisk-zkvm-elf
 CARGO     ?= cargo
 
-LIB_OUT   = lib/libziskos.a
-CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_PKG).a
+LIB_OUT   = lib/libziskos_staticlib.a
+CARGO_OUT = $(ZISK_DIR)/target/$(ZISK_TARGET)/release/lib$(ZISK_LIB).a
 
 ZIG       ?= zig
 ZISKEMU   ?= ziskemu
@@ -35,16 +35,17 @@ all: $(LIB_OUT)
 $(LIB_OUT):
 	@command -v $(CARGO) >/dev/null 2>&1 || \
 	    { echo "ERROR: cargo not found. Install Rust: https://rustup.rs"; exit 1; }
-	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
-	    { echo "ERROR: Zisk Rust toolchain not installed."; \
-	      echo "       Run: cargo-zisk toolchain install"; exit 1; }
 	@test -d $(ZISK_DIR) || \
 	    { echo "ERROR: ZISK_DIR=$(ZISK_DIR) not found."; \
-	      echo "       Clone zisk 0.17.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
+	      echo "       Clone zisk 0.18.0: git clone https://github.com/0xPolygonHermez/zisk $(ZISK_DIR)"; \
 	      echo "       Or set ZISK_DIR=/path/to/zisk"; exit 1; }
-	@echo "==> Building libziskos.a from $(ZISK_DIR) ..."
+	@$(CARGO) +zisk --version >/dev/null 2>&1 || \
+	    { echo "ERROR: Zisk Rust toolchain 'zisk' not installed."; \
+	      echo "       Install via ziskup / cargo-zisk toolchain install"; exit 1; }
+	@echo "==> Building libziskos_staticlib.a from $(ZISK_DIR) ..."
 	cd $(ZISK_DIR) && $(CARGO) +zisk build -p $(ZISK_PKG) \
-	    --target $(ZISK_TARGET) --release --no-default-features
+	    --target $(ZISK_TARGET) --release \
+	    --config 'profile.release.lto="fat"'
 	@mkdir -p lib
 	cp $(CARGO_OUT) $(LIB_OUT)
 	@echo "==> Copied $(LIB_OUT)  ($$(wc -c < $(LIB_OUT)) bytes)"

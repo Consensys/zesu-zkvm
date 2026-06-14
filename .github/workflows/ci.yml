@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  ZISK_VERSION: "0.17.0"
+  ZISK_VERSION: "0.18.0"
   ZISK_TARGET: riscv64ima-zisk-zkvm-elf
   # Set to a zesu release tag (e.g. "bal-devnet-3") to pin a specific version.
   # Leave empty to use the latest published release.
@@ -56,17 +56,17 @@ jobs:
       - name: Install Zisk Rust toolchain
         run: cargo +zisk --version 2>/dev/null || cargo-zisk toolchain install
 
-      - name: Cache libziskos.a
+      - name: Cache libziskos_staticlib.a
         id: cache-libziskos
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: zesu-zkvm/zisk/lib/libziskos.a
-          key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
+          path: zesu-zkvm/zisk/lib/libziskos_staticlib.a
+          key: libziskos-staticlib-${{ env.ZISK_VERSION }}-${{ runner.os }}
 
-      - name: Build libziskos.a
+      - name: Build libziskos_staticlib.a
         if: steps.cache-libziskos.outputs.cache-hit != 'true'
         working-directory: zesu-zkvm/zisk
-        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
+        run: make lib/libziskos_staticlib.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
       - name: Download zesu object
         run: |
@@ -152,17 +152,17 @@ jobs:
       - name: Install Zisk Rust toolchain
         run: cargo +zisk --version 2>/dev/null || cargo-zisk toolchain install
 
-      - name: Cache libziskos.a
+      - name: Cache libziskos_staticlib.a
         id: cache-libziskos
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: zesu-zkvm/zisk/lib/libziskos.a
-          key: libziskos-${{ env.ZISK_VERSION }}-${{ runner.os }}
+          path: zesu-zkvm/zisk/lib/libziskos_staticlib.a
+          key: libziskos-staticlib-${{ env.ZISK_VERSION }}-${{ runner.os }}
 
-      - name: Build libziskos.a
+      - name: Build libziskos_staticlib.a
         if: steps.cache-libziskos.outputs.cache-hit != 'true'
         working-directory: zesu-zkvm/zisk
-        run: make lib/libziskos.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
+        run: make lib/libziskos_staticlib.a ZISK_DIR=$GITHUB_WORKSPACE/zisk
 
       - name: Download zesu object
         run: |

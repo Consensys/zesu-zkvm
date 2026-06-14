@@ -17,67 +17,41 @@ pub fn build(b: *std.Build) void {
     // (omit)                             build from source via zesu_core path dep
     const zesu_obj_path = b.option([]const u8, "zesu_obj", "Path to pre-built zesu.rv64im.o (omit to build from source via zesu_core dep)");
 
-    // ── Zisk zkVM runtime module ──────────────────────────────────────────────
-    const zisk_mod = b.addModule("zisk", .{
-        .root_source_file = b.path("src/runtime/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // ── ZisK zkvm_io: memory-mapped I/O per zkvm-standards ───────────────────
-    const zisk_io_mod = b.createModule(.{
-        .root_source_file = b.path("src/zkvm_io.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // ── accel_impl: ZisK CSR-backed accelerators ─────────────────────────────
-    const accel_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/runtime/zisk_accel_impl.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    accel_impl_mod.addImport("zisk", zisk_mod);
-
     // ── zesu rv64im object ────────────────────────────────────────────────────
 
     // ── zisk-host object ─────────────────────────────────────────────────────
-    // Compiled separately so it can be partially linked with libziskos.a before
-    // the final link.  Exports: 9 CSR-backed zkvm_* + IO + runtime symbols.
+    // Compiled separately so it can be partially linked with libziskos_staticlib.a before
+    // the final link.  Exports: runtime and profiling symbols (zkvm_log, zkvm_exit, sys_read,
+    // zkvm_profiling_*).  read_input/write_output and all 19 zkvm_* accelerators come from
+    // libziskos_staticlib.a (ZisK 0.18 circuit-backed).
     const host_mod = b.createModule(.{
         .root_source_file = b.path("src/zisk_host.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .medium,
     });
-    host_mod.addImport("accel_impl", accel_impl_mod);
-    host_mod.addImport("zkvm_io", zisk_io_mod);
     const host_obj = b.addObject(.{
         .name = "zisk-host",
         .root_module = host_mod,
     });
 
-    // ── Partial link: zisk-host.o + libziskos.a → zisk-wrapped.o ─────────────
+    // ── Partial link: zisk-host.o + libziskos_staticlib.a → zisk-wrapped.o ───
     //
-    // libziskos.a's cgu.11 defines all 19 zkvm_* symbols in one archive member.
-    // zesu.o needs the 10 BLS12/kzg symbols from cgu.11, so the linker must pull
-    // it in — bringing the 9 duplicate CSR definitions with it.
-    //
-    // Resolving this before the final link:
-    //   --allow-multiple-definition: host_obj's 9 CSR exports (listed first) win;
-    //   libziskos.a contributes the 10 BLS12/kzg symbols + _start/init_sys_alloc.
-    // Output is a single relocatable object with every symbol defined exactly once.
+    // Merges host (IO, runtime, profiling) with libziskos_staticlib.a (all 19 zkvm_*
+    // accelerators + _start/init_sys_alloc) into a single relocatable object.
+    // In ZisK 0.18, all accelerators come from libziskos_staticlib.a with no duplicates.
     const wrap_cmd = b.addSystemCommand(&.{
         "zig", "ld.lld",
-        "-r",  "--allow-multiple-definition",
+        "-r",  "--whole-archive",
     });
     wrap_cmd.addFileArg(host_obj.getEmittedBin());
-    wrap_cmd.addFileArg(b.path("lib/libziskos.a"));
+    wrap_cmd.addFileArg(b.path("lib/libziskos_staticlib.a"));
+    wrap_cmd.addArg("--no-whole-archive");
     wrap_cmd.addArg("-o");
     const zisk_wrapped = wrap_cmd.addOutputFileArg("zisk-wrapped.o");
 
     // ── Final guest executable ────────────────────────────────────────────────
-    // zesu.o (main + EVM logic) + zisk-wrapped.o (host + libziskos merged).
+    // zesu.o (main + EVM logic) + zisk-wrapped.o (host + libziskos_staticlib merged).
     // The linker script handles memory layout; no Zig root source needed here.
     const exe = b.addExecutable(.{
         .name = "zesu-zisk",

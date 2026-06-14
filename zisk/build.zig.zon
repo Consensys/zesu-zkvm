@@ -1,15 +1,10 @@
 .{
     .name = .zesu_zisk,
     .version = "0.0.0",
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.16.0",
     .fingerprint = 0xba55df56d95db8b3,
 
     .dependencies = .{},
 
-    .paths = .{
-        "build.zig",
-        "build.zig.zon",
-        "src",
-        "zisk.ld",
-    },
+    .paths = .{"."},
 }
