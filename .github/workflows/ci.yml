@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  ZISK_VERSION: "0.18.0"
+  ZISK_VERSION: "1.0.0-alpha"
   ZISK_TARGET: riscv64ima-zisk-zkvm-elf
   # Set to a zesu release tag (e.g. "bal-devnet-3") to pin a specific version.
   # Leave empty to use the latest published release.

@@ -8,7 +8,7 @@ name: Release
 #   zesu_version — zesu release tag to pull zesu.rv64im.o from (empty = latest)
 #
 # Targets built:
-#   zisk    — ZisK v0.18.0; links zesu.o + zisk-wrapped.o (host + libziskos_staticlib merged)
+#   zisk    — ZisK v1.0.0-alpha; links zesu.o + zisk-wrapped.o (host + libziskos_staticlib merged)
 #   openvm  — OpenVM rv64im; links zesu.o + openvm-host.o
 #   linea   — Linea rv64im; links zesu.o + linea-host.o; stripped ELF
 
@@ -26,7 +26,7 @@ on:
         default: ""
 
 env:
-  ZISK_VERSION: "0.18.0"
+  ZISK_VERSION: "1.0.0-alpha"
 
 permissions:
   contents: write
