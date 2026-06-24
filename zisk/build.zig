@@ -22,8 +22,8 @@ pub fn build(b: *std.Build) void {
     // ── zisk-host object ─────────────────────────────────────────────────────
     // Compiled separately so it can be partially linked with libziskos_staticlib.a before
     // the final link.  Exports: runtime and profiling symbols (zkvm_log, zkvm_exit, sys_read,
-    // zkvm_profiling_*).  read_input/write_output and all 19 zkvm_* accelerators come from
-    // libziskos_staticlib.a (ZisK 0.18 circuit-backed).
+    // zkvm_profiling_*).  read_input/write_output and all zkvm_* accelerators come from
+    // libziskos_staticlib.a (ZisK 1.0.0-alpha circuit-backed).
     const host_mod = b.createModule(.{
         .root_source_file = b.path("src/zisk_host.zig"),
         .target = target,
@@ -37,9 +37,9 @@ pub fn build(b: *std.Build) void {
 
     // ── Partial link: zisk-host.o + libziskos_staticlib.a → zisk-wrapped.o ───
     //
-    // Merges host (IO, runtime, profiling) with libziskos_staticlib.a (all 19 zkvm_*
+    // Merges host (IO, runtime, profiling) with libziskos_staticlib.a (all zkvm_*
     // accelerators + _start/init_sys_alloc) into a single relocatable object.
-    // In ZisK 0.18, all accelerators come from libziskos_staticlib.a with no duplicates.
+    // All accelerators come from libziskos_staticlib.a with no duplicates.
     const wrap_cmd = b.addSystemCommand(&.{
         "zig", "ld.lld",
         "-r",  "--whole-archive",
